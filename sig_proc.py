@@ -69,7 +69,9 @@ def gen_sdf(psth, ftype, w, bin_size = 1, varargin = None, multi_unit = True):
     f_map ={ # Options for kernel type
         'boxcar': boxcar,
         'Gauss': gauss,
-        'exp': exp}
+        'exp': exp,
+        'gpfa': gpfa
+    }
     if multi_unit:
         sdf = psth
         sdf = torch.Tensor(sdf.T).unsqueeze(1)
@@ -113,3 +115,18 @@ def exp(sdf, w):
     temp = np.arange(start=-max_pos + 1, stop=kernel.size - max_pos + .01, step=1)
     kernel = np.vstack([temp, kernel])
     return sdf, kernel
+
+def gpfa(sdf, w, bin_size, s_n2=1e-3, tau=1):
+    s_f2 = 1-s_n2
+    T = sdf.shape[0]
+    ts = torch.arange(start=1, end=T+1, step=1)
+    channels = sdf.shape[-1]
+    K = torch.zeros((channels, T, T))
+    for i in range(channels):
+        for idx, t in enumerate(ts):
+            K1 = s_f2 * torch.exp(-(t-ts)**2/(2*tau**2))
+            K2 = s_n2 * torch.Tensor(t == ts)
+            K[i, idx] = K1 + K2
+        print(K[i])
+    print(K)
+            # print(K1 + K2)

@@ -136,7 +136,7 @@ with open(f'{save_dir}/eventTimes.p', 'wb') as event_time_file:
 
 
 #Generate psth across all neurons in each area for a single trial
-kernel_type = 'Gauss'
+kernel_type = 'gpfa'
 kernel_width = 50
 bin_size = 10
 trial_psth_dir = f'{save_dir}/trial_psth_{bin_size}'
