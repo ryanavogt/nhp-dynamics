@@ -45,7 +45,7 @@ def gen_psth(spiketimes, binsize, window, neurons = 1):
     if (window.max() - window.min())%binsize != 0:
         T += 1
     psth = np.zeros((T+1, 1+neurons))
-    psth[:, 0] = np.arange(window[0], binsize*T+.001, binsize)
+    psth[:, 0] = np.arange(window[0], window[0]+binsize*T+.001, binsize)
     spxtimes = np.sort(spiketimes[:, 1])
     spxcounts = spiketimes[:, 0]
 

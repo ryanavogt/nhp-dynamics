@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt     #Generating plots
 from pandas.plotting import table
 
 
+
 #Define directories of data
 data_dir = 'Data/Sorted_Inactivation'
 matlab_dir = f'{data_dir}/matlabFiles'
@@ -55,12 +56,12 @@ for _, date, monkey in file_names_split:
             with open(spike_file_name, 'rb') as spike_count_file:
                 spike_counts = pkl.load(spike_count_file)
             for area in neurons:
-                print(spike_counts)
-                area_spikes[area] = spike_counts[unit][area]
+                area_spikes[area] = spike_counts[area]
                 area_sum = np.array([n[1] for n in neurons[area]]).sum()
                 # print(f'Area: {area}\nSum: {area_sum}')
                 area_neurons[area] = area_sum
-    print(area_neurons)
+            print(f'Unit {unit}: {spike_counts}')
+    print(f'Neurons: {area_neurons}')
     data_summary[monkey][f'{date[:4]}/{date[4:6]}/{date[6:]}'] = area_neurons
     spikes_summary[monkey][f'{date[:4]}/{date[4:6]}/{date[6:]}'] = area_spikes
 
