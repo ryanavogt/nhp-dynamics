@@ -1,14 +1,12 @@
 import pickle as pkl                #Saving/loading data (built-in)
 import os                           #Directory Creation and Verification (built-in)
-import math                         #Ceil, floor, and related functions (built-in)
 import glob
 
 # The following packages need to be installed in your virtual environment (usig conda or pip)
 import pandas as pd                 #Loading tables
-import scipy.io as sio              #Loading matlab files
 import numpy as np                  #Array operations
 import matplotlib.pyplot as plt     #Generating plots
-from pandas.plotting import table
+from pandas.plotting import table   #Plotting Tables
 
 
 
@@ -58,7 +56,6 @@ for _, date, monkey in file_names_split:
             for area in neurons:
                 area_spikes[area] = spike_counts[area]
                 area_sum = np.array([n[1] for n in neurons[area]]).sum()
-                # print(f'Area: {area}\nSum: {area_sum}')
                 area_neurons[area] = area_sum
             print(f'Unit {unit}: {spike_counts}')
     print(f'Neurons: {area_neurons}')
@@ -75,7 +72,7 @@ for monkey in ['G', 'R']:
     ax.xaxis.set_label_position('top')
     ax.set_yticks([])
 
-    table(ax, area_df.astype('Int64'), loc='center')  # where df is your data frame
+    table(ax, area_df.astype('Int64'), loc='center')
 
     plt.title(f'Neuron Count for Monkey {monkey}')
     plt.savefig(f'Data/dataSummary_neuronCounts_{monkey}.png', dpi = 300, bbox_inches = 'tight')
@@ -86,7 +83,7 @@ for monkey in ['G', 'R']:
     ax.xaxis.set_label_position('top')
     ax.set_yticks([])
 
-    table(ax, spikes_df.astype('Int64'), loc='center')  # where df is your data frame
+    table(ax, spikes_df.astype('Int64'), loc='center')
 
     plt.title(f'Spike Count for Monkey {monkey}')
     plt.savefig(f'Data/dataSummary_spikeCounts_{monkey}.png', dpi=300, bbox_inches='tight')

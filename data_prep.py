@@ -1,14 +1,11 @@
 # The following packages are built-in for python builds
 import pickle as pkl                #Saving/loading data (built-in)
 import os                           #Directory Creation and Verification (built-in)
-import math                         #Ceil, floor, and related functions (built-in)
 import glob
 
-# The following packages need to be installed in your virtual environment (usig conda or pip)
+# The following packages need to be installed in your virtual environment (using conda or pip)
 import pandas as pd                 #Loading tables
 import scipy.io as sio              #Loading matlab files
-import numpy as np                  #Array operations
-import matplotlib.pyplot as plt     #Generating plots
 
 # Local module(s)
 from  sig_proc import *             #Local module - for processing signal data
@@ -22,21 +19,10 @@ data_dir = 'Data/Sorted_Inactivation'
 matlab_dir = f'{data_dir}/matlabFiles'
 sorting_dir = f'{data_dir}/sortingNotes'
 
-# #Define Experimental Parameters (date, subject, other file identifiers)
-# year = '2015'
-# month = '03'
-# day = '24'
-# date = f'{year}_{month}_{day}'
-# monkey_name = 'Red'
-# monkey_dir = f'monk{monkey_name}2024Sorting_SQ'
-# name_label = monkey_name[0]
-# m_number = 1
-
 #Identify all data sessions
 file_list = [f for f in glob.glob(f'{sorting_dir}/*ortingNotes_*')]
 for file in file_list:
     file_name = file.split('\\')[-1]
-    # print(file_name)
     _, date_flat, name_label = file_name.split('_')
     name_label = name_label[0]
     monkey_name = monkey_name_dict[name_label]
@@ -52,7 +38,7 @@ for file in file_list:
     trialNumbers:           Index for trial (clean)             - int
     originalTrialNumber:    Trial index before cleaning         - int
     isRightHandUsed:        (error?) Right hand used? T(R)/F(L) - boolean (0/1)
-    handOrien               Orientation of target, hand         - 1: left horizontal, 2: right horizontal, 3: left vertical, right vertical
+    handOrien               Orientation of target, hand         - 1:left horizontal, 2:right horizontal, 3:left vertical, 4:right vertical
     trialStartTimes         Start time of trial                 - int (ms)
     trialRewardDrop         Time of pellet drop ("Go cue")      - int (ms)
     trialReachOn            Time monkey starts to reach         - int (ms)
@@ -126,7 +112,6 @@ for file in file_list:
     area_spike_counts = {}
     area_neuron_counts = {}
     monkey_dir = f'{matlab_dir}/monk{monkey_name}2024Sorting_SQ'
-    # matlab_file_name = f'{date}_{name_label}_Monk{monkey_name}-{m_number}_eNe{unit}.mat'
     matlab_file_list = [f for f in glob.glob(f'{monkey_dir}/{year}_{month}_{day}*')]
     for matlab_file_name in matlab_file_list:
         unit = int(matlab_file_name.split('.')[0][-1])
