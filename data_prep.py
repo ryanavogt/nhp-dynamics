@@ -99,12 +99,14 @@ for file in file_list:
             pkl.dump(neurons[unit], neuron_file)
 
     # Define time window for each trial
-    trial_windows = np.zeros((event_df['trialStartTimes'].values.shape[0], 5), dtype=int)
+    trial_windows = np.zeros((event_df['trialStartTimes'].values.shape[0], 7), dtype=int)
     trial_windows[:, 0] = event_df['isRightHandUsed']
     trial_windows[:, 1] = event_df['handOrien']
     trial_windows[:, 2] = event_df['trialStartTimes']
     trial_windows[:, 3] = event_df['trialGraspOff'] + 500
     trial_windows[:, 4] = event_df['trialGraspOn'] - trial_windows[:, 2]
+    trial_windows[:, 5] = event_df['trialReachOn'] - trial_windows[:, 2]
+    trial_windows[:, 6] = event_df['trialRewardDrop'] - trial_windows[:, 2]
 
     with open(f'{save_dir}/trial_data.p', 'wb') as f:
         pkl.dump(trial_windows, f)

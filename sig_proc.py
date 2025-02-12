@@ -62,7 +62,7 @@ def gen_sdf(psth, ftype, w, bin_size = 1, varargin = None, multi_unit = True):
     Generate Spike Density Function by convolving the spike time histogram with a convolution function
     :param psth: Peristimulus Time Histogram (from psth function)
     :param ftype: Kernel Function; ['boxcar', 'Gauss', 'exp'] (typically Gauss)
-    :param w: bin size (usually 1ms)
+    :param w: kernel width (usually 1ms)
     :param varargin: if there is another input (ignore)
     :return: sdf
     """
@@ -80,7 +80,6 @@ def gen_sdf(psth, ftype, w, bin_size = 1, varargin = None, multi_unit = True):
         sdf = torch.Tensor(sdf).unsqueeze(-1).unsqueeze(-1)
     sdf, kernel = f_map[ftype](sdf, w, bin_size)
     return sdf, kernel
-
 
 def gauss(sdf, w, bin_size=1):
     gauss_width = max([11, 6*w+1])

@@ -9,7 +9,6 @@ import matplotlib.pyplot as plt     #Generating plots
 from pandas.plotting import table   #Plotting Tables
 
 
-
 #Define directories of data
 data_dir = 'Data/Sorted_Inactivation'
 matlab_dir = f'{data_dir}/matlabFiles'

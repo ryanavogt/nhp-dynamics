@@ -45,9 +45,6 @@ orient_dict = {1: ('left', 'horizontal'),
                3: ('left', 'vertical'),
                4: ('right', 'vertical')}
 
-
-
-
 for trial_no in range(1, trial_windows.shape[0], 5):
     print(f'Trial {trial_no}')
     hand_used, hand_orient = orient_dict[int(trial_orientation[trial_no-1])]

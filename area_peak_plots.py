@@ -47,8 +47,6 @@ for date, monkey in zip(date_strings, monkey_labels):
     area_list = [f for f in glob.glob(f'{trial_dir}/spikeTimes_*')] #All brain regions in folder (e.g. M1R, PMdR, PMvL, etc.)
     for area in area_list:
         area_name = area.split('_')[-1].split('.')[0]
-        if area_name[-1]=='1':
-            print(f'{date}: {area_name}')
         if area_name == 'S1': #Ignore S1 area
             continue
         with open(area, 'rb') as area_file:
@@ -83,17 +81,18 @@ for date, monkey in zip(date_strings, monkey_labels):
 Generate plots of the max spiking rates for each area, side, and orientation.
 Scale the rate to the max rate for contralateral side. Apply that scale to ipsilateral side.
 """
-
 for area_label in all_areas:
     for orientation in ['horizontal', 'vertical']:
         for lat in ['c', 'i']:
             region_key = f'{lat}{area_label}_{orientation}'
+            print(region_key)
             if region_key in area_summary_dict:
                 area_summary_dict[region_key]['spikes'] = np.hstack(area_summary_dict[region_key]['spikes'])
-            psth_list = []
+            sdf_list = []
             neuron_count = area_summary_dict[region_key]['neurons'].astype(int)
             window_range = np.array([-1000, 1000])
-            binsize = 20
+            binsize = 10
+            kernel_width = 100
             if lat == 'c':
                 neuron_peak_times = np.zeros(neuron_count)
                 neuron_scales = np.zeros(neuron_count)
@@ -102,17 +101,18 @@ for area_label in all_areas:
                 neuron_spikes = area_summary_dict[region_key]['spikes'][:, neuron_mask]
                 neuron_spikes[0, :] = 1
                 neuron_psth = gen_psth(neuron_spikes.T, binsize=binsize, window=window_range, neurons=1)
-                neuron_scales[neuron_idx] = neuron_psth[:,1].max()
-                peak_location = neuron_psth[:,1].argmax()
+                neuron_sdf, _ = gen_sdf(neuron_psth, w=kernel_width, bin_size=binsize, ftype='Gauss', multi_unit=False)
+                neuron_scales[neuron_idx] = neuron_sdf[:].max()
+                peak_location = neuron_sdf[:].argmax()
                 if lat == 'c':
                     neuron_peak_times[neuron_idx] = peak_location
                 time_scale = neuron_psth[:,0]
-                psth_list.append(neuron_psth[:,1]/neuron_scales[neuron_idx])
+                sdf_list.append(neuron_sdf[:, 0].T/neuron_scales[neuron_idx])
             peak_order = np.argsort(neuron_peak_times)
-            area_scale_psth = np.vstack(psth_list)
+            area_scale_sdf = np.vstack(sdf_list)
             y, x = np.mgrid[1:neuron_count+2:1, window_range[0]:window_range[1]+2*binsize:binsize]
             plt.figure(figsize = (3, 8))
-            plt.pcolor(x, y, area_scale_psth[peak_order],
+            plt.pcolor(x, y, area_scale_sdf[peak_order],
                        cmap='inferno', norm = mpl.colors.Normalize(vmin=0, vmax=1.5))
             plt.axvline(x=0, color='w', linestyle=':')
             plt.gca().invert_yaxis()
@@ -120,3 +120,35 @@ for area_label in all_areas:
             plt.ylabel('Neuron No.')
             plt.xlabel('Time from Grasp Onset (ms)')
             plt.savefig(f'{summary_dir}/NeuronSpikes_{region_key}.png', bbox_inches='tight')
+
+"""
+Identify epoch of maximal spike rate and find proportion of neurons with peak in each epoch.
+"""
+epoch_names = ['trialRewardDrop', 'trialReachOn', 'trialGraspOn']
+epoch_windows = {'trialRewardDrop': [0, 100], 'trialReachOn': [-100, 200], 'trialGraspOn':[-100, 500]}
+binsize = 10
+kernel_width = 100
+
+for orientation in ['horizontal', 'vertical']:
+    for epoch_idx, epoch in enumerate(epoch_names):
+        window_range = epoch_windows[epoch]
+        for lat in ['c', 'i']:
+            for area_label in all_areas:
+                region_key = f'{lat}{area_label}_{orientation}'
+                print(region_key)
+                if region_key in area_summary_dict:
+                    area_summary_dict[region_key]['spikes'] = np.hstack(area_summary_dict[region_key]['spikes'])
+                sdf_list = []
+                neuron_count = area_summary_dict[region_key]['neurons'].astype(int)
+                for neuron_idx in range(neuron_count):
+                    neuron_mask = area_summary_dict[region_key]['spikes'][0, :] == neuron_idx+1
+                    neuron_spikes = area_summary_dict[region_key]['spikes'][:, neuron_mask]+trial_windows[:, 4]-trial_windows[:,6-epoch_idx]
+                    neuron_spikes[0, :] = 1
+                    neuron_psth = gen_psth(neuron_spikes.T, binsize=binsize, window=window_range, neurons=1)
+                    neuron_sdf, _ = gen_sdf(neuron_psth, w=kernel_width, bin_size=binsize, ftype='Gauss', multi_unit=False)
+                    neuron_scales[neuron_idx] = neuron_sdf[:].max()
+                    peak_location = neuron_sdf[:].argmax()
+                    if lat == 'c':
+                        neuron_peak_times[neuron_idx] = peak_location
+                    time_scale = neuron_psth[:,0]
+                    sdf_list.append(neuron_sdf[:, 0].T/neuron_scales[neuron_idx])
