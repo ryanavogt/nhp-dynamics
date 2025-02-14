@@ -99,17 +99,17 @@ for file in file_list:
             pkl.dump(neurons[unit], neuron_file)
 
     # Define time window for each trial
-    trial_windows = np.zeros((event_df['trialStartTimes'].values.shape[0], 7), dtype=int)
-    trial_windows[:, 0] = event_df['isRightHandUsed']
-    trial_windows[:, 1] = event_df['handOrien']
-    trial_windows[:, 2] = event_df['trialStartTimes']
-    trial_windows[:, 3] = event_df['trialGraspOff'] + 500
-    trial_windows[:, 4] = event_df['trialGraspOn'] - trial_windows[:, 2]
-    trial_windows[:, 5] = event_df['trialReachOn'] - trial_windows[:, 2]
-    trial_windows[:, 6] = event_df['trialRewardDrop'] - trial_windows[:, 2]
+    trial_data = {}
+    trial_data['handOrien'] = event_df['handOrien']
+    trial_data['trialStartTimes'] = event_df['trialStartTimes']
+    trial_data['trialEnd'] = event_df['trialGraspOff'] + 500
+    trial_data['trialGraspOn'] = event_df['trialGraspOn'] - trial_data['trialStartTimes']
+    trial_data['trialReachOn'] = event_df['trialReachOn'] - trial_data['trialStartTimes']
+    trial_data['trialRewardDrop'] = event_df['trialRewardDrop'] - trial_data['trialStartTimes']
+
 
     with open(f'{save_dir}/trial_data.p', 'wb') as f:
-        pkl.dump(trial_windows, f)
+        pkl.dump(trial_data, f)
 
     area_spike_counts = {}
     area_neuron_counts = {}
@@ -125,7 +125,8 @@ for file in file_list:
             area_neuron_count = 0
             rel_spike_times = {}
             for sig, no_neurons in neurons[unit][area]:
-                rel_spike_times[sig] = trial_splitter(data, trial_windows[:, 2:4], sig)
+                trial_windows = np.vstack([trial_data['trialStartTimes'], trial_data['trialEnd']]).T
+                rel_spike_times[sig] = trial_splitter(data, trial_windows, sig)
                 area_neuron_count += no_neurons
                 area_spike_count += rel_spike_times[sig].shape[0]
             with open(f'{save_dir}/spikeTimes_U{unit}_{area}.p', 'wb') as spike_time_file:
@@ -141,7 +142,7 @@ for file in file_list:
         rel_event_times = {}
         for event in events:
             event_times = event_df[event].values
-            rel_event_times[event] = event_times - trial_windows[:, 2]
+            rel_event_times[event] = event_times - trial_data['trialStartTimes']
 
         with open(f'{save_dir}/eventTimes.p', 'wb') as event_time_file:
             pkl.dump(rel_event_times, event_time_file)
