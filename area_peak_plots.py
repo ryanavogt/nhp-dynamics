@@ -5,9 +5,17 @@ import glob
 # The following packages need to be installed in your virtual environment (usig conda or pip)
 import matplotlib.pyplot as plt     #Generating plots
 from sig_proc import *
+import pandas as pd
 import matplotlib as mpl
 
+import seaborn as sns
+
+
+sns.set()
+sns.set_style(style='white')
+
 monkey_name_map = {'R': 'Red', 'G': 'Green'}
+event_map = {'trialRewardDrop': 'Cue', 'trialReachOn':'Reach', 'trialGraspOn':'Grasp'}
 
 #Define directories of data
 data_dir = 'Data/Sorted_Inactivation'
@@ -18,10 +26,12 @@ summary_dir = f'Data/Processed/Summary'
 if not os.path.exists(summary_dir):
     os.mkdir(summary_dir)
 
+lat_map = {'c':'contralateral', 'i':'ipsilateral'}
 hand_list = ['R', 'L']
 events = ['trialRewardDrop', 'trialReachOn', 'trialGraspOn']
 binsize = 10
 kernel_width = 100
+load_override_preprocess = False
 load_override = False
 
 # Extract All Sessions from their Sorting Notes
@@ -45,7 +55,7 @@ all_areas = []
 
 
 spikes_file_name = f'{summary_dir}/spike_summary.p'
-if os.path.exists(spikes_file_name) and not load_override:
+if os.path.exists(spikes_file_name) and not load_override_preprocess:
     with open(spikes_file_name, 'rb') as spike_file:
         area_summary_dict = pkl.load(spike_file)
     print('Spike File Loaded')
@@ -99,18 +109,28 @@ else:
 Generate plots of the max spiking rates for each area, side, and orientation.
 Scale the rate to the max rate for contralateral side. Apply that scale to ipsilateral side.
 """
+window_range = np.array([-1000, 1000])
 skip = False
-
+area_max_rate = {}
 all_sdf_filename = f'{summary_dir}/sdfDict_bin{binsize}_k{kernel_width}.p'
+max_rate_filename = f'{summary_dir}/sdfMaxRate_bin{binsize}_k{kernel_width}.p'
+peak_order_filename = f'{summary_dir}/peakOrderDict_bin{binsize}_k{kernel_width}.p'
 if os.path.exists(all_sdf_filename) and not load_override:
     with open(all_sdf_filename, 'rb') as sdf_file:
         all_sdf_dict = pkl.load(sdf_file)
+    with open(max_rate_filename, 'rb') as max_rate_file:
+        area_max_rate = pkl.load(max_rate_file)
+    with open(peak_order_filename, 'rb') as peak_order_file:
+        peak_order_dict = pkl.load(peak_order_file)
     print(f'SDF Dictionary Loaded (Bin: {binsize}, Kernel: {kernel_width})')
 else:
     all_sdf_dict = {}
+    peak_order_dict = {}
     for area_label in area_summary_dict.keys():
         if skip:
             break
+        peak_order_dict[area_label] = {}
+        area_max_rate[area_label] = np.zeros(area_summary_dict[area_label][events[0]]['neurons'].astype(int))
         region_key = f'{area_label}'
         print(region_key)
         lat = region_key[0]
@@ -121,7 +141,6 @@ else:
             sdf_list = []
             # sdf_scaled_list = []
             neuron_count = area_summary_dict[region_key][event]['neurons'].astype(int)
-            window_range = np.array([-1000, 1000])
             neuron_peak_times = np.zeros(neuron_count)
             # neuron_scales = np.zeros(neuron_count)
             for neuron_idx in range(neuron_count):
@@ -137,9 +156,12 @@ else:
                 # sdf_scaled_list.append(neuron_sdf[:, 0].T/neuron_scales[neuron_idx])
                 sdf_list.append(neuron_sdf[:, 0].T)
             peak_order = np.argsort(neuron_peak_times)
+            peak_order_dict[area_label][event] = peak_order
             # area_scale_sdf = np.vstack(sdf_scaled_list)
             area_sdf = np.vstack(sdf_list)
             all_sdf_dict[region_key][event] = area_sdf
+            event_max_rate = np.max(area_sdf, axis=1)
+            area_max_rate[area_label] = np.maximum(event_max_rate, area_max_rate[area_label])
 
             # Area Relative Spike Density Plots
             # y, x = np.mgrid[1:neuron_count+2:1, window_range[0]:window_range[1]+2*binsize:binsize]
@@ -155,8 +177,65 @@ else:
             # plt.xlabel(f'Time from Event (ms)')
             # plt.savefig(f'{summary_dir}/NeuronSpikes_{region_key}_event{event}.png', bbox_inches='tight')
             # plt.close()
+
     with open(all_sdf_filename, 'wb') as sdf_file:
         pkl.dump(all_sdf_dict, sdf_file)
+    with open(max_rate_filename, 'wb') as max_rate_file:
+        pkl.dump(area_max_rate, max_rate_file)
+    with open(peak_order_filename, 'wb') as peak_order_file:
+        pkl.dump(peak_order_dict, peak_order_file)
+
+"""
+Generate plots after loading data
+"""
+plot_dict = {}
+max_dict = {}
+for area_label in area_summary_dict.keys():
+    area_key, orientation = area_label.split('_')
+    lat, region = area_key[0], area_key[1:]
+    peak_order = peak_order_dict[area_label]
+    if orientation not in plot_dict.keys():
+        plot_dict[orientation] = {}
+        max_dict[orientation] = {}
+    if region not in plot_dict[orientation].keys():
+        plot_dict[orientation][region] = {}
+        max_dict[orientation][region] = {}
+    for event in events:
+        if event not in plot_dict[orientation][region]:
+            plot_dict[orientation][region][event] = {}
+            max_dict[orientation][region][event] = {}
+        neuron_count = area_summary_dict[area_label][event]['neurons']
+        area_sdf = all_sdf_dict[area_label][event]
+        plot_dict[orientation][region][event][lat] = area_sdf
+        max_dict[orientation][region][event][lat] = {'max':area_sdf.max(axis=1), 'order': peak_order[event]}
+
+neuron_plot_dir = f'{summary_dir}/Neuron Plots'
+if not os.path.exists(neuron_plot_dir):
+    os.mkdir(neuron_plot_dir)
+for orientation in plot_dict.keys():
+    for region in plot_dict[orientation].keys():
+        neuron_count = area_summary_dict[f'c{region}_{orientation}']['trialGraspOn']['neurons'].astype(int)
+        for event in plot_dict[orientation][region].keys():
+            peak_order = max_dict[orientation][region][event]['c']['order']
+            max_rate = max_dict[orientation][region][event]['c']['max']
+            fig, axs = plt.subplots(1, 2, figsize=(8, 8))
+            for idx, lat in enumerate(['c', 'i']):
+                a = plot_dict[orientation][region][event][lat].T
+                scaled_sdf = np.divide(a, max_rate, where= max_rate>0)
+                y, x = np.mgrid[1:neuron_count + 2:1,
+                       window_range[0]/1000:window_range[1]/1000 + 2 * binsize/1000:binsize/1000]
+                # plt.figure(figsize = (3, 8))
+                axs[idx].pcolor(x, y, scaled_sdf.T[peak_order],
+                           cmap='inferno', norm = mpl.colors.Normalize(vmin=0, vmax=1.5))
+                axs[idx].axvline(x=0, color='w', linestyle=':')
+                axs[idx].invert_yaxis()
+                axs[idx].title.set_text(lat_map[lat].capitalize())
+                axs[idx].set_xlabel(f'Time from Event (s)')
+            fig.suptitle(f'{region}, {orientation.capitalize()}, {event_map[event].capitalize()}')
+            axs[0].set_ylabel('Neuron No.')
+            plt.savefig(f'{neuron_plot_dir}/NeuronSpikes_{region}_{orientation}_{event_map[event]}.png', bbox_inches='tight')
+            plt.close()
+
 
 """
 Identify epoch of maximal spike rate and find proportion of neurons with peak in each epoch.
@@ -171,24 +250,55 @@ neuron_peaks_filename = f'{summary_dir}/neuron_peaks.p'
 
 with open(all_sdf_filename, 'rb') as all_sdf_filename:
     all_sdf_dict = pkl.load(all_sdf_filename)
+with open(max_rate_filename, 'rb') as max_rate_file:
+    area_max_rate = pkl.load(max_rate_file)
+
 for area_label in area_summary_dict.keys():
+    max_rate_mask = {}
     full_window = np.arange(-1000, 1000+binsize, binsize)
+    area_max = area_max_rate[area_label]
     region_key = f'{area_label}'
     region, orient = area_label.split('_')
     lat, region = region[0], region[1:]
-    print(region_key)
     event_spike_maxes[region_key] = {}
-    lat = region_key[0]
+    if region not in event_neuron_max.keys():
+        event_neuron_max[region] = {'proportions': {}, 'neurons':0}
     for event in events:
         event_window = epoch_windows[event]
         event_mask = (full_window>event_window[0]) * (full_window<event_window[1])
         area_sdf = all_sdf_dict[region_key][event][:, event_mask]
         event_spike_maxes[region_key][event] = area_sdf.max(axis=1)
     event_neuron_peaks = np.vstack(event_spike_maxes[region_key].values())
-    event_neuron_max[region_key] = np.argmax(event_neuron_peaks, axis=0)
-    event_peak_proportions = {}
-    for idx, event in enumerate(events):
-        event_peak_proportions[event] = np.average(event_neuron_max[region_key]==idx)
-    event_neuron_max[region_key]= event_peak_proportions
+    # event_neuron_max[region_key] = event_neuron_peaks == area_max_rate[region_key]
+    # for idx, event in enumerate(events):
+    #     event_peak_proportions[event] = np.average(event_neuron_max[region_key]==idx)
+    event_peak_proportions = np.average(event_neuron_peaks == area_max_rate[region_key], axis=1)
+    event_neuron_max[region]['neurons'] = event_neuron_peaks.shape[1]
+    event_neuron_max[region]['proportions'][lat_map[lat]]= event_peak_proportions
+
+for region in event_neuron_max.keys():
+    plt.figure(figsize=(5,5))
+    ax = plt.gca()
+    x = np.arange(len(events))
+    neurons = event_neuron_max[region]['neurons']
+    width = 0.4
+    multiplier = 0
+    max_height = 0
+    for side, proportion in event_neuron_max[region]['proportions'].items():
+        offset = width*multiplier
+        max_height = max(proportion.max()*100, max_height)
+        rects = ax.bar(x+offset, proportion*100, width, label=side)
+        # ax.bar_label(rects, padding=3)
+        multiplier+= 1
+    ax.set_ylabel('Neurons(%)')
+    ax.set_xlabel('Epochs')
+    ax.set_title(f'Epoch of Max Discharge, {region}')
+    ax.set_xticks(x+width*(multiplier-1)/2, events)
+    ax.legend(loc='upper left', ncols=3)
+    sns.move_legend(ax, "upper left", bbox_to_anchor=(1, 1))
+    plt.text(x=0-width/2, y = max_height, s=f'n={neurons}', fontsize=15, color='black', bbox=dict(facecolor='white', alpha=0.5))
+    sns.despine()
+    plt.savefig(f'{summary_dir}/MaxDischargeProportions_{region}.png', bbox_inches='tight')
+
 with open(neuron_peaks_filename, 'wb') as neuron_peaks_file:
     pkl.dump(event_neuron_max, neuron_peaks_file)
