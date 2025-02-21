@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.stats import norm
+from scipy.stats import norm, t
 import math
 import torch
 import torch.nn.functional as F
@@ -129,3 +129,18 @@ def gpfa(sdf, w, bin_size, s_n2=1e-3, tau=1):
         print(K[i])
     print(K)
             # print(K1 + K2)
+
+def t_test(sdf1, sdf2, q=0.025):
+    n1, n2 = sdf1.shape[1], sdf2.shape[1]
+    m1, m2 = np.mean(sdf1, axis=1), np.mean(sdf2, axis=1)
+    s1, s2 = np.std(sdf1, axis=1),  np.std(sdf2, axis=1)
+    v1, v2 = s1**2/n1, s2**2/n2
+    print(f'V1 min: {v1.min()}, V2 min:{v2.min()}')
+    t_vals = (m1-m2)/np.sqrt(v1 + v2)
+    df = (v1+v2)**2/(1/(n1-1) *v1**2 + 1/(n2-1)*v2**2)
+    modulation = np.zeros(len(m1), dtype=bool)
+    for neuron_idx in range(len(m1)):
+        lower_tail = t.cdf(t_vals[neuron_idx], df[neuron_idx])
+        upper_tail = t.sf(t_vals[neuron_idx], df[neuron_idx])
+        modulation[neuron_idx] = (lower_tail < q) or (upper_tail <q)
+    return modulation

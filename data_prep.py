@@ -147,6 +147,7 @@ for file in file_list:
         with open(f'{save_dir}/eventTimes.p', 'wb') as event_time_file:
             pkl.dump(rel_event_times, event_time_file)
 
+
         # #Generate psth across all neurons in each area for a single trial
         # kernel_type = 'gpfa'
         # kernel_width = 50

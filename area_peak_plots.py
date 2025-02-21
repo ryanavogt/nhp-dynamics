@@ -8,14 +8,27 @@ from sig_proc import *
 import pandas as pd
 import matplotlib as mpl
 
+from sig_proc import *
+
 import seaborn as sns
 
 
 sns.set()
 sns.set_style(style='white')
 
+"""
+Define maps for reference:
+monkey_name_map: Map labels to full names   - Name label (R, G) -> Full name (Red, Green)
+event_map: Name of events for plotting      - Raw event name -> Shortened event name (for labels on plots)
+"""
 monkey_name_map = {'R': 'Red', 'G': 'Green'}
 event_map = {'trialRewardDrop': 'Cue', 'trialReachOn':'Reach', 'trialGraspOn':'Grasp'}
+# Define the reference events and time window defining each epoch
+epoch_window_map = {'Pre-cue':  {'event': 'trialRewardDrop', 'window': [-700,    -100]},
+                   'Post-cue': {'event': 'trialRewardDrop', 'window': [0,       100]},
+                   'Reach':    {'event': 'trialReachOn',    'window': [-700,    -100]},
+                   'Grasp On': {'event': 'trialGraspOn',    'window': [-700,    -100]},
+                   'Grasp Off':{'event': 'trialEnd',        'window': [-700,    -400]}}
 
 #Define directories of data
 data_dir = 'Data/Sorted_Inactivation'
@@ -209,10 +222,13 @@ for area_label in area_summary_dict.keys():
         plot_dict[orientation][region][event][lat] = area_sdf
         max_dict[orientation][region][event][lat] = {'max':area_sdf.max(axis=1), 'order': peak_order[event]}
 
+skip_plots = True
 neuron_plot_dir = f'{summary_dir}/Neuron Plots'
 if not os.path.exists(neuron_plot_dir):
     os.mkdir(neuron_plot_dir)
 for orientation in plot_dict.keys():
+    if skip_plots:
+        break
     for region in plot_dict[orientation].keys():
         neuron_count = area_summary_dict[f'c{region}_{orientation}']['trialGraspOn']['neurons'].astype(int)
         for event in plot_dict[orientation][region].keys():
@@ -293,7 +309,7 @@ for region in event_neuron_max.keys():
     ax.set_ylabel('Neurons(%)')
     ax.set_xlabel('Epochs')
     ax.set_title(f'Epoch of Max Discharge, {region}')
-    ax.set_xticks(x+width*(multiplier-1)/2, events)
+    ax.set_xticks(x+width*(multiplier-1)/2, [event_map[e] for e in events])
     ax.legend(loc='upper left', ncols=3)
     sns.move_legend(ax, "upper left", bbox_to_anchor=(1, 1))
     plt.text(x=0-width/2, y = max_height, s=f'n={neurons}', fontsize=15, color='black', bbox=dict(facecolor='white', alpha=0.5))
@@ -302,3 +318,48 @@ for region in event_neuron_max.keys():
 
 with open(neuron_peaks_filename, 'wb') as neuron_peaks_file:
     pkl.dump(event_neuron_max, neuron_peaks_file)
+
+"""
+Perform t-tests to determine if neurons were modulated 
+"""
+full_window = np.arange(-1000, 1000+binsize, binsize)
+baseline_epoch = 'Pre-cue'
+base_window= epoch_window_map[baseline_epoch]['window']
+baseline_mask = (full_window>base_window[0]) * (full_window<base_window[1])
+p_score = 0.05
+modulation_dict = {}
+for region in all_sdf_dict.keys():
+    area, orientation = region.split('_')
+    lat, area = area[0], area[1:]
+    if orientation not in modulation_dict.keys():
+        modulation_dict[orientation] = {}
+    baseline_sdf = all_sdf_dict[region][epoch_window_map[baseline_epoch]['event']][:, baseline_mask]
+    event_modulations = []
+    for event in all_sdf_dict[region].keys():
+        event_modulations.append(t_test(baseline_sdf, all_sdf_dict[region][event], q=p_score/2))
+    event_modulations=np.vstack(event_modulations)
+    if area not in modulation_dict[orientation].keys():
+        modulation_dict[orientation][area] = {}
+    modulation_dict[orientation][area][lat_map[lat]] = event_modulations
+
+for orientation in modulation_dict.keys():
+    for region in modulation_dict[orientation].keys():
+        plt.figure(figsize=(5, 5))
+        ax = plt.gca()
+        for side, modulation in modulation_dict[orientation][region].items():
+            offset = width*multiplier
+            mod_perc = np.average(modulation, axis=1)
+            max_height = max(mod_perc.max()*100, max_height)
+            rects = ax.bar(x+offset, proportion*100, width, label=side)
+            # ax.bar_label(rects, padding=3)
+            multiplier+= 1
+        ax.set_ylabel('Neurons(%)')
+        ax.set_xlabel('Epochs')
+        ax.set_title(f'Modulation by Epoch, {region}, {orientation}')
+        ax.set_xticks(x + width * (multiplier - 1) / 2, [event_map[e] for e in events])
+        ax.legend(loc='upper left', ncols=3)
+        sns.move_legend(ax, "upper left", bbox_to_anchor=(1, 1))
+        # plt.text(x=0 - width / 2, y=max_height, s=f'n={neurons}', fontsize=15, color='black',
+        #          bbox=dict(facecolor='white', alpha=0.5))
+        sns.despine()
+        plt.savefig(f'{summary_dir}/Modulation_{region}_{orientation}.png', bbox_inches='tight')
