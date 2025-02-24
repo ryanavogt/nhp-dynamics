@@ -130,17 +130,25 @@ def gpfa(sdf, w, bin_size, s_n2=1e-3, tau=1):
     print(K)
             # print(K1 + K2)
 
-def t_test(sdf1, sdf2, q=0.025):
+def t_test(sdf1, sdf2, q=0.025, paired = False):
     n1, n2 = sdf1.shape[1], sdf2.shape[1]
     m1, m2 = np.mean(sdf1, axis=1), np.mean(sdf2, axis=1)
     s1, s2 = np.std(sdf1, axis=1),  np.std(sdf2, axis=1)
-    v1, v2 = s1**2/n1, s2**2/n2
-    print(f'V1 min: {v1.min()}, V2 min:{v2.min()}')
-    t_vals = (m1-m2)/np.sqrt(v1 + v2)
-    df = (v1+v2)**2/(1/(n1-1) *v1**2 + 1/(n2-1)*v2**2)
+    if paired:
+        s_pop = np.sqrt(((n1-1)*s1**2 + (n2-1)*s2**2)/(n1+n2-2))
+        s_mean = s_pop*np.sqrt(1/n1+1/n2)
+        t_vals = (m1-m2)/s_mean
+        df = n1+n2-2
+    else:
+        v1, v2 = s1**2/n1, s2**2/n2
+        # if v1.min()==0 or v2.min() ==0:
+        #     print(f'V1 min: {v1.min()}, V2 min:{v2.min()}')
+        t_vals = (m1-m2)/np.sqrt(v1 + v2)
+        df = (v1+v2)**2/(1/(n1-1) *v1**2 + 1/(n2-1)*v2**2)
     modulation = np.zeros(len(m1), dtype=bool)
     for neuron_idx in range(len(m1)):
-        lower_tail = t.cdf(t_vals[neuron_idx], df[neuron_idx])
-        upper_tail = t.sf(t_vals[neuron_idx], df[neuron_idx])
-        modulation[neuron_idx] = (lower_tail < q) or (upper_tail <q)
-    return modulation
+        # lower_tail = t.cdf(t_vals[neuron_idx], df[neuron_idx])
+        sig_level = t.sf(abs(t_vals[neuron_idx]), df[neuron_idx])
+        # modulation[neuron_idx] = (lower_tail < q) or (upper_tail <q)
+        modulation[neuron_idx] = sig_level < q
+    return modulation, t_vals

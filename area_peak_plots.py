@@ -277,8 +277,10 @@ for area_label in area_summary_dict.keys():
     region, orient = area_label.split('_')
     lat, region = region[0], region[1:]
     event_spike_maxes[region_key] = {}
-    if region not in event_neuron_max.keys():
-        event_neuron_max[region] = {'proportions': {}, 'neurons':0}
+    if orient not in event_neuron_max.keys():
+        event_neuron_max[orient] = {}
+    if region not in event_neuron_max[orient].keys():
+        event_neuron_max[orient][region] = {'proportions': {}, 'neurons':0}
     for event in events:
         event_window = epoch_windows[event]
         event_mask = (full_window>event_window[0]) * (full_window<event_window[1])
@@ -289,32 +291,39 @@ for area_label in area_summary_dict.keys():
     # for idx, event in enumerate(events):
     #     event_peak_proportions[event] = np.average(event_neuron_max[region_key]==idx)
     event_peak_proportions = np.average(event_neuron_peaks == area_max_rate[region_key], axis=1)
-    event_neuron_max[region]['neurons'] = event_neuron_peaks.shape[1]
-    event_neuron_max[region]['proportions'][lat_map[lat]]= event_peak_proportions
+    event_neuron_max[orient][region]['neurons'] = event_neuron_peaks.shape[1]
+    event_neuron_max[orient][region]['proportions'][lat_map[lat]]= event_peak_proportions
 
-for region in event_neuron_max.keys():
-    plt.figure(figsize=(5,5))
-    ax = plt.gca()
+for orientation in event_neuron_max.keys():
+    # plt.figure(figsize=(5,5))
+    f, axs = plt.subplots(nrows=1, ncols=3, figsize=(12, 5), sharey='row')
     x = np.arange(len(events))
-    neurons = event_neuron_max[region]['neurons']
-    width = 0.4
-    multiplier = 0
     max_height = 0
-    for side, proportion in event_neuron_max[region]['proportions'].items():
-        offset = width*multiplier
-        max_height = max(proportion.max()*100, max_height)
-        rects = ax.bar(x+offset, proportion*100, width, label=side)
-        # ax.bar_label(rects, padding=3)
-        multiplier+= 1
-    ax.set_ylabel('Neurons(%)')
-    ax.set_xlabel('Epochs')
-    ax.set_title(f'Epoch of Max Discharge, {region}')
-    ax.set_xticks(x+width*(multiplier-1)/2, [event_map[e] for e in events])
-    ax.legend(loc='upper left', ncols=3)
-    sns.move_legend(ax, "upper left", bbox_to_anchor=(1, 1))
-    plt.text(x=0-width/2, y = max_height, s=f'n={neurons}', fontsize=15, color='black', bbox=dict(facecolor='white', alpha=0.5))
+    for idx, region in enumerate(event_neuron_max[orientation].keys()):
+        ax = axs[idx]
+        neurons = event_neuron_max[orientation][region]['neurons']
+        width = 0.4
+        multiplier = 0
+        for side, proportion in event_neuron_max[orientation][region]['proportions'].items():
+            offset = width*multiplier
+            max_height = max(proportion.max()*100, max_height)
+            rects = ax.bar(x+offset, proportion*100, width, label=side)
+            # ax.bar_label(rects, padding=3)
+            multiplier+= 1
+        # ax.set_ylabel('Neurons(%)')
+        ax.set_xlabel('Epochs')
+        ax.set_title(f'{region}')
+        ax.set_xticks(x+width*(multiplier-1)/2, [event_map[e] for e in events])
+        ax.text(x=0 - width / 2, y=max_height, s=f'n={neurons}', fontsize=15, color='black',
+                 bbox=dict(facecolor='white', alpha=0.5))
+    handles, labels = plt.gca().get_legend_handles_labels()
+    f.legend(handles, labels, loc=(0.5, 0), ncols=2)
+    # ax.legend(loc='upper left', ncols=3)
+    sns.move_legend(f, "lower center", bbox_to_anchor=(.5, -.06), ncol=3)
+    axs[0].set_ylabel('Neurons (%)')
+    f.suptitle(f'Epoch of Max Discharge, {orientation.capitalize()}')
     sns.despine()
-    plt.savefig(f'{summary_dir}/MaxDischargeProportions_{region}.png', bbox_inches='tight')
+    plt.savefig(f'{summary_dir}/MaxDischargeProportions_{orientation}.png', bbox_inches='tight')
 
 with open(neuron_peaks_filename, 'wb') as neuron_peaks_file:
     pkl.dump(event_neuron_max, neuron_peaks_file)
@@ -336,30 +345,76 @@ for region in all_sdf_dict.keys():
     baseline_sdf = all_sdf_dict[region][epoch_window_map[baseline_epoch]['event']][:, baseline_mask]
     event_modulations = []
     for event in all_sdf_dict[region].keys():
-        event_modulations.append(t_test(baseline_sdf, all_sdf_dict[region][event], q=p_score/2))
+        mod_tuple = t_test(baseline_sdf, all_sdf_dict[region][event], q=p_score/2)
+        event_modulations.append(mod_tuple[0])
     event_modulations=np.vstack(event_modulations)
     if area not in modulation_dict[orientation].keys():
         modulation_dict[orientation][area] = {}
     modulation_dict[orientation][area][lat_map[lat]] = event_modulations
 
+hand_use_mod = {}
 for orientation in modulation_dict.keys():
-    for region in modulation_dict[orientation].keys():
-        plt.figure(figsize=(5, 5))
-        ax = plt.gca()
+    f, axs = plt.subplots(nrows=1, ncols=3, figsize=(12, 5), sharey='row')
+    hand_use_mod[orientation] = {}
+    for idx, region in enumerate(modulation_dict[orientation].keys()):
+        hand_use_mod[orientation][region] = {}
+        # plt.figure(figsize=(5, 5))
+        ax = axs[idx]
+        multiplier = 0
+        hand_mod = []
         for side, modulation in modulation_dict[orientation][region].items():
+            hand_mod.append(modulation)
             offset = width*multiplier
             mod_perc = np.average(modulation, axis=1)
-            max_height = max(mod_perc.max()*100, max_height)
-            rects = ax.bar(x+offset, proportion*100, width, label=side)
+            # max_height = max(mod_perc.max()*100, max_height)
+            max_height = 100
+            rects = ax.bar(x+offset, mod_perc*100, width, label=side)
             # ax.bar_label(rects, padding=3)
             multiplier+= 1
+        # Compute the share of modulated neurons across each hand
+        hand_nonSpecific = ~np.bitwise_xor(hand_mod[0], hand_mod[1])
+        ipsi_only = hand_mod[0] * ~hand_nonSpecific
+        contra_only = hand_mod[1] * ~hand_nonSpecific
+        hand_use_mod[orientation][region] = {'Ipsilateral': ipsi_only, 'Contralateral': contra_only,
+                                             'Hand non-specific': hand_nonSpecific}
         ax.set_ylabel('Neurons(%)')
+        ax.set_ylim([0, max_height])
         ax.set_xlabel('Epochs')
-        ax.set_title(f'Modulation by Epoch, {region}, {orientation}')
+        ax.set_title(f'{region}')
         ax.set_xticks(x + width * (multiplier - 1) / 2, [event_map[e] for e in events])
-        ax.legend(loc='upper left', ncols=3)
-        sns.move_legend(ax, "upper left", bbox_to_anchor=(1, 1))
-        # plt.text(x=0 - width / 2, y=max_height, s=f'n={neurons}', fontsize=15, color='black',
-        #          bbox=dict(facecolor='white', alpha=0.5))
-        sns.despine()
-        plt.savefig(f'{summary_dir}/Modulation_{region}_{orientation}.png', bbox_inches='tight')
+        # ax.legend(loc='upper left', ncols=3)
+    handles, labels = plt.gca().get_legend_handles_labels()
+    f.legend(handles, labels, loc = (0.5, 0), ncols=3)
+    sns.move_legend(f, "lower center", bbox_to_anchor=(.5, -.06), ncol=3)
+    sns.despine()
+    f.suptitle(f'Modulation by Epoch, {orientation.capitalize()}')
+    plt.savefig(f'{summary_dir}/Modulation_{orientation}.png', bbox_inches='tight')
+
+
+width = 0.3
+for orientation in modulation_dict.keys():
+    f, axs = plt.subplots(nrows=1, ncols=3, figsize=(12,5), sharey='row')
+    for idx, region in enumerate(hand_use_mod[orientation].keys()):
+        # plt.figure(figsize=(5, 5))
+        ax = axs[idx]
+        multiplier = 0
+        for side, modulation in hand_use_mod[orientation][region].items():
+            offset = width*multiplier
+            hand_mod_perc = np.average(modulation, axis=1)
+            # max_height = max(mod_perc.max()*100, max_height)
+            max_height = 100
+            rects = ax.bar(x+offset, hand_mod_perc*100, width, label=side)
+            # ax.bar_label(rects, padding=3)
+            multiplier+= 1
+        # ax.set_ylabel('Neurons(%)')
+        ax.set_ylim([0, max_height])
+        ax.set_xlabel('Epochs')
+        ax.set_title(f'{region}')
+        ax.set_xticks(x + width * (multiplier - 1) / 2, [event_map[e] for e in events])
+    handles, labels = plt.gca().get_legend_handles_labels()
+    f.legend(handles, labels, loc=(0.5, 0), ncols=3)
+    sns.move_legend(f, "lower center", bbox_to_anchor=(.5, -.06), ncol=3)
+    axs[0].set_ylabel('Epoch Modulated Neurons (%)')
+    f.suptitle(f'Modulation by Hand Used, {orientation.capitalize()}')
+    sns.despine()
+    plt.savefig(f'{summary_dir}/HandModulation_{orientation}.png', bbox_inches='tight')

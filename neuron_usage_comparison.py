@@ -20,7 +20,6 @@ data_dir = 'Data/Sorted_Inactivation'
 matlab_dir = f'{data_dir}/matlabFiles'
 sorting_dir = f'{data_dir}/sortingNotes'
 
-ian_neurons = mat73.loadmat(f'{data_dir}/PMv_Neuron_List_PreInact.mat')['Neurons']
 all_ian_neurons = {}
 all_new_neurons = {}
 monkey_list = []
@@ -29,18 +28,24 @@ channel_list = []
 area_list = []
 ian_neuron_list = []
 new_neuron_list = []
-for neuron in ian_neurons:
-    date_unit, region, _, sig_neuron = neuron[0].split('_')
-    monkey, year, month, day, unit = date_unit[0], date_unit[1:5], date_unit[5:7], date_unit[7:9], date_unit[-1]
-    sig, neuron = int(sig_neuron[3:6]), int(sig_neuron[-1])
-    monkey_load_dir = f'Data/Processed/Monkey_{monkey_name_dict[monkey]}'
-    load_dir = f'{monkey_load_dir}/{year}_{month}_{day}'
-    lat, area = region[0], region[1:]
-    id_key = f'{monkey}_{year}{month}{day}_{unit}_{area}{hemisphere_map[lat]}_{sig}'
-    if id_key not in all_ian_neurons.keys():
-        all_ian_neurons[id_key] = 1
-    else:
-        all_ian_neurons[id_key] += 1
+file_list = glob.glob(f'{data_dir}/*PreInact.mat')
+for file in file_list:
+    ian_neurons = mat73.loadmat(file)['Neurons']
+    for neuron in ian_neurons:
+        date_unit, region, _, sig_neuron = neuron[0].split('_')
+        monkey, year, month, day, unit = date_unit[0], date_unit[1:5], date_unit[5:7], date_unit[7:9], date_unit[-1]
+        sig, neuron = int(sig_neuron[3:6]), int(sig_neuron[-1])
+        monkey_load_dir = f'Data/Processed/Monkey_{monkey_name_dict[monkey]}'
+        load_dir = f'{monkey_load_dir}/{year}_{month}_{day}'
+        if region == 'M1':
+            lat, area = 'c', region
+        else:
+            lat, area = region[0], region[1:]
+        id_key = f'{monkey}_{year}{month}{day}_{unit}_{area}{hemisphere_map[lat]}_{sig}'
+        if id_key not in all_ian_neurons.keys():
+            all_ian_neurons[id_key] = 1
+        else:
+            all_ian_neurons[id_key] += 1
 
 file_list = [f for f in glob.glob(f'Data/Processed/**/Neurons_U*', recursive=True)]
 for file in file_list:
@@ -51,21 +56,21 @@ for file in file_list:
     with open(file, 'rb') as neuron_file:
         neuron_dict = pkl.load(neuron_file)
     for area in neuron_dict:
-        if 'PMv' in area:
-            id_key_short = f'{monkey[0]}_{year}{month}{day}_{unit}_{area}'
-            all_new_neurons[id_key] = {}
-            for sig, neurons in neuron_dict[area]:
-                id_key = f'{id_key_short}_{sig}'
-                all_new_neurons[f'{id_key}'] = int(neurons)
-                monkey_list.append(monkey[0])
-                date_list.append(f'{year}{month}{day}')
-                channel_list.append(f'U{unit}, Sig{sig}')
-                area_list.append(area)
-                new_neuron_list.append(int(neurons))
-                if id_key in all_ian_neurons.keys():
-                    ian_neuron_list.append(all_ian_neurons[id_key])
-                else:
-                    ian_neuron_list.append(0)
+        # if 'PMv' in area:
+        id_key_short = f'{monkey[0]}_{year}{month}{day}_{unit}_{area}'
+        all_new_neurons[id_key] = {}
+        for sig, neurons in neuron_dict[area]:
+            id_key = f'{id_key_short}_{sig}'
+            all_new_neurons[f'{id_key}'] = int(neurons)
+            monkey_list.append(monkey[0])
+            date_list.append(f'{year}{month}{day}')
+            channel_list.append(f'U{unit}, Sig{sig}')
+            area_list.append(area)
+            new_neuron_list.append(int(neurons))
+            if id_key in all_ian_neurons.keys():
+                ian_neuron_list.append(all_ian_neurons[id_key])
+            else:
+                ian_neuron_list.append(0)
 
 for id_key in all_ian_neurons.keys():
     if id_key not in all_new_neurons:
@@ -85,7 +90,7 @@ cortex_list = []
 shared_list = []
 ian_only_list = []
 new_only_list = []
-for area in ['PMvL', 'PMvR']:
+for area in ['PMvL', 'PMvR', 'M1R', 'PMdL', 'PMdR']:
     cortex_list.append(area)
     region_filter = neuron_df['Region']==area
     # region_filter = neuron_df['New Neurons'] > -1000
@@ -112,7 +117,7 @@ ax.xaxis.set_label_position('top')
 ax.set_yticks([])
 table(ax, summary_df, loc='center')
 
-plt.title(f'PMv Neuron Differences')
+plt.title(f'Neuron Differences')
 plt.savefig(f'Data/Processed/Summary/neuronSplits.png', dpi = 300, bbox_inches = 'tight')
 
 neuron_df.to_csv(f'Data/Processed/Summary/neuronComparison_PMv.csv')
