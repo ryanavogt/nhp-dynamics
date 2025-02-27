@@ -22,7 +22,7 @@ monkey_name_map: Map labels to full names   - Name label (R, G) -> Full name (Re
 event_map: Name of events for plotting      - Raw event name -> Shortened event name (for labels on plots)
 """
 monkey_name_map = {'R': 'Red', 'G': 'Green'}
-event_map = {'trialRewardDrop': 'Cue', 'trialReachOn':'Reach', 'trialGraspOn':'Grasp'}
+event_map = {'trialRewardDrop': 'Cue', 'trialReachOn':'Reach', 'trialGraspOn':'GraspOn', 'trialEnd':'GraspOff'}
 # Define the reference events and time window defining each epoch
 epoch_window_map = {'Pre-cue':  {'event': 'trialRewardDrop', 'window': [-700,    -100]},
                    'Post-cue': {'event': 'trialRewardDrop', 'window': [0,       100]},
@@ -41,7 +41,7 @@ if not os.path.exists(summary_dir):
 
 lat_map = {'c':'contralateral', 'i':'ipsilateral'}
 hand_list = ['R', 'L']
-events = ['trialRewardDrop', 'trialReachOn', 'trialGraspOn']
+events = ['trialRewardDrop', 'trialReachOn', 'trialGraspOn', 'trialEnd']
 binsize = 10
 kernel_width = 100
 load_override_preprocess = False
@@ -108,7 +108,7 @@ else:
                             region_key = f'{lateral_label}{area_label}_{orient}'
                             if region_key not in area_summary_dict:
                                 area_summary_dict[region_key] = {}
-                            for event in ['trialRewardDrop', 'trialReachOn', 'trialGraspOn']:
+                            for event in events:
                                 if event not in area_summary_dict[region_key]:
                                     area_summary_dict[region_key][event] = {'spikes':[], 'neurons': 0}
                                 event_times = trial_data[event][channel_spikes[:, -1].astype(int) - 1]
@@ -152,10 +152,8 @@ else:
             if region_key in area_summary_dict:
                 area_summary_dict[region_key][event]['spikes'] = np.concatenate(area_summary_dict[region_key][event]['spikes'], axis=1)
             sdf_list = []
-            # sdf_scaled_list = []
             neuron_count = area_summary_dict[region_key][event]['neurons'].astype(int)
             neuron_peak_times = np.zeros(neuron_count)
-            # neuron_scales = np.zeros(neuron_count)
             for neuron_idx in range(neuron_count):
                 neuron_mask = area_summary_dict[region_key][event]['spikes'][0, :] == neuron_idx+1
                 neuron_spikes = area_summary_dict[region_key][event]['spikes'][:, neuron_mask]
@@ -175,21 +173,6 @@ else:
             all_sdf_dict[region_key][event] = area_sdf
             event_max_rate = np.max(area_sdf, axis=1)
             area_max_rate[area_label] = np.maximum(event_max_rate, area_max_rate[area_label])
-
-            # Area Relative Spike Density Plots
-            # y, x = np.mgrid[1:neuron_count+2:1, window_range[0]:window_range[1]+2*binsize:binsize]
-            # plt.figure(figsize = (3, 8))
-            # plt.pcolor(x, y, area_scale_sdf[peak_order],
-            #            cmap='inferno', norm = mpl.colors.Normalize(vmin=0, vmax=1.5))
-            # plt.axvline(x=0, color='w', linestyle=':')
-            # plt.gca().invert_yaxis()
-            #
-            # area_title, orientation = region_key.split('_')
-            # plt.title(f'{area_title}, {orientation}, {event}')
-            # plt.ylabel('Neuron No.')
-            # plt.xlabel(f'Time from Event (ms)')
-            # plt.savefig(f'{summary_dir}/NeuronSpikes_{region_key}_event{event}.png', bbox_inches='tight')
-            # plt.close()
 
     with open(all_sdf_filename, 'wb') as sdf_file:
         pkl.dump(all_sdf_dict, sdf_file)
@@ -224,41 +207,41 @@ for area_label in area_summary_dict.keys():
 
 skip_plots = True
 neuron_plot_dir = f'{summary_dir}/Neuron Plots'
-if not os.path.exists(neuron_plot_dir):
-    os.mkdir(neuron_plot_dir)
-for orientation in plot_dict.keys():
-    if skip_plots:
-        break
-    for region in plot_dict[orientation].keys():
-        neuron_count = area_summary_dict[f'c{region}_{orientation}']['trialGraspOn']['neurons'].astype(int)
-        for event in plot_dict[orientation][region].keys():
-            peak_order = max_dict[orientation][region][event]['c']['order']
-            max_rate = max_dict[orientation][region][event]['c']['max']
-            fig, axs = plt.subplots(1, 2, figsize=(8, 8))
-            for idx, lat in enumerate(['c', 'i']):
-                a = plot_dict[orientation][region][event][lat].T
-                scaled_sdf = np.divide(a, max_rate, where= max_rate>0)
-                y, x = np.mgrid[1:neuron_count + 2:1,
-                       window_range[0]/1000:window_range[1]/1000 + 2 * binsize/1000:binsize/1000]
-                # plt.figure(figsize = (3, 8))
-                axs[idx].pcolor(x, y, scaled_sdf.T[peak_order],
-                           cmap='inferno', norm = mpl.colors.Normalize(vmin=0, vmax=1.5))
-                axs[idx].axvline(x=0, color='w', linestyle=':')
-                axs[idx].invert_yaxis()
-                axs[idx].title.set_text(lat_map[lat].capitalize())
-                axs[idx].set_xlabel(f'Time from Event (s)')
-            fig.suptitle(f'{region}, {orientation.capitalize()}, {event_map[event].capitalize()}')
-            axs[0].set_ylabel('Neuron No.')
-            plt.savefig(f'{neuron_plot_dir}/NeuronSpikes_{region}_{orientation}_{event_map[event]}.png', bbox_inches='tight')
-            plt.close()
-
+index_sides = ['ipsi', 'contra']
+for index_side in index_sides:
+    if not os.path.exists(neuron_plot_dir):
+        os.mkdir(neuron_plot_dir)
+    for orientation in plot_dict.keys():
+        if skip_plots:
+            break
+        for region in plot_dict[orientation].keys():
+            neuron_count = area_summary_dict[f'c{region}_{orientation}']['trialGraspOn']['neurons'].astype(int)
+            for event in plot_dict[orientation][region].keys():
+                peak_order = max_dict[orientation][region][event][index_side[0]]['order']
+                max_rate = max_dict[orientation][region][event][index_side[0]]['max']
+                fig, axs = plt.subplots(1, 2, figsize=(8, 8))
+                for idx, lat in enumerate(['c', 'i']):
+                    a = plot_dict[orientation][region][event][lat].T
+                    scaled_sdf = np.divide(a, max_rate, where= max_rate>0)
+                    y, x = np.mgrid[1:neuron_count + 2:1,
+                           window_range[0]/1000:window_range[1]/1000 + 2 * binsize/1000:binsize/1000]
+                    axs[idx].pcolor(x, y, scaled_sdf.T[peak_order],
+                               cmap='inferno', norm = mpl.colors.Normalize(vmin=0, vmax=1.5))
+                    axs[idx].axvline(x=0, color='w', linestyle=':')
+                    axs[idx].invert_yaxis()
+                    axs[idx].title.set_text(lat_map[lat].capitalize())
+                    axs[idx].set_xlabel(f'Time from Event (s)')
+                fig.suptitle(f'{region}, {orientation.capitalize()}, {event_map[event].capitalize()}, Scale: {index_side}')
+                axs[0].set_ylabel('Neuron No.')
+                plt.savefig(f'{neuron_plot_dir}/NeuronSpikes_{region}_{orientation}_{event_map[event]}_scale{index_side}.png', bbox_inches='tight')
+                plt.close()
 
 """
 Identify epoch of maximal spike rate and find proportion of neurons with peak in each epoch.
 """
-epoch_names = ['trialRewardDrop', 'trialReachOn', 'trialGraspOn']
-epoch_windows = {'trialRewardDrop': [0, 100], 'trialReachOn': [-100, 200], 'trialGraspOn':[-100, 500]}
-epoch_windows = {'trialRewardDrop': [0, 100], 'trialReachOn': [-100, 200], 'trialGraspOn':[-100, 500]}
+epoch_names = ['trialRewardDrop', 'trialReachOn', 'trialGraspOn', 'trialGraspOff']
+epoch_windows = {'trialRewardDrop': [0, 100], 'trialReachOn': [-100, 200], 'trialGraspOn':[-100, 500], 'trialEnd':[-700, -400]}
+# epoch_windows = {'trialRewardDrop': [0, 100], 'trialReachOn': [-100, 200], 'trialGraspOn':[-100, 500]}
 # events = ['trialRewardDrop', 'trialReachOn', 'trialGraspOn', 'trialGraspOff']
 event_spike_maxes = {}
 event_neuron_max = {}
@@ -281,23 +264,27 @@ for area_label in area_summary_dict.keys():
         event_neuron_max[orient] = {}
     if region not in event_neuron_max[orient].keys():
         event_neuron_max[orient][region] = {'proportions': {}, 'neurons':0}
-    for event in events:
-        event_window = epoch_windows[event]
+    for epoch in epoch_window_map.keys():
+        if epoch == 'Pre-cue':
+            continue
+        event = epoch_window_map[epoch]['event']
+        event_window = epoch_window_map[epoch]['window']
         event_mask = (full_window>event_window[0]) * (full_window<event_window[1])
         area_sdf = all_sdf_dict[region_key][event][:, event_mask]
-        event_spike_maxes[region_key][event] = area_sdf.max(axis=1)
+        event_spike_maxes[region_key][epoch] = area_sdf.max(axis=1)
     event_neuron_peaks = np.vstack(event_spike_maxes[region_key].values())
     # event_neuron_max[region_key] = event_neuron_peaks == area_max_rate[region_key]
     # for idx, event in enumerate(events):
     #     event_peak_proportions[event] = np.average(event_neuron_max[region_key]==idx)
-    event_peak_proportions = np.average(event_neuron_peaks == area_max_rate[region_key], axis=1)
+    event_peaks = (event_neuron_peaks == area_max_rate[region_key])
+    event_peaks[-2] = np.logical_or(event_peaks[-2], event_peaks[-1])
+    event_peak_proportions = np.average(event_peaks[:-1], axis=1)
     event_neuron_max[orient][region]['neurons'] = event_neuron_peaks.shape[1]
     event_neuron_max[orient][region]['proportions'][lat_map[lat]]= event_peak_proportions
 
 for orientation in event_neuron_max.keys():
-    # plt.figure(figsize=(5,5))
-    f, axs = plt.subplots(nrows=1, ncols=3, figsize=(12, 5), sharey='row')
-    x = np.arange(len(events))
+    f, axs = plt.subplots(nrows=1, ncols=3, figsize=(12, 4), sharey='row')
+    x = np.arange(len(events)-1)
     max_height = 0
     for idx, region in enumerate(event_neuron_max[orientation].keys()):
         ax = axs[idx]
@@ -313,7 +300,7 @@ for orientation in event_neuron_max.keys():
         # ax.set_ylabel('Neurons(%)')
         ax.set_xlabel('Epochs')
         ax.set_title(f'{region}')
-        ax.set_xticks(x+width*(multiplier-1)/2, [event_map[e] for e in events])
+        ax.set_xticks(x+width*(multiplier-1)/2, [e.split(' ')[0] for e in list(epoch_window_map.keys())[1:-1]])
         ax.text(x=0 - width / 2, y=max_height, s=f'n={neurons}', fontsize=15, color='black',
                  bbox=dict(facecolor='white', alpha=0.5))
     handles, labels = plt.gca().get_legend_handles_labels()
@@ -344,32 +331,35 @@ for region in all_sdf_dict.keys():
         modulation_dict[orientation] = {}
     baseline_sdf = all_sdf_dict[region][epoch_window_map[baseline_epoch]['event']][:, baseline_mask]
     event_modulations = []
+    event_tVals = []
     for event in all_sdf_dict[region].keys():
-        mod_tuple = t_test(baseline_sdf, all_sdf_dict[region][event], q=p_score/2)
+        mod_tuple = t_test(baseline_sdf, all_sdf_dict[region][event], q=p_score/2, paired=True)
         event_modulations.append(mod_tuple[0])
+        event_tVals.append(mod_tuple[1])
     event_modulations=np.vstack(event_modulations)
+    event_tVals = np.vstack(event_tVals)
     if area not in modulation_dict[orientation].keys():
         modulation_dict[orientation][area] = {}
-    modulation_dict[orientation][area][lat_map[lat]] = event_modulations
+    modulation_dict[orientation][area][lat_map[lat]] = {'modulations':event_modulations, 'tVals':event_tVals}
 
 hand_use_mod = {}
 for orientation in modulation_dict.keys():
-    f, axs = plt.subplots(nrows=1, ncols=3, figsize=(12, 5), sharey='row')
+    f, axs = plt.subplots(nrows=1, ncols=3, figsize=(12, 4), sharey='row')
     hand_use_mod[orientation] = {}
     for idx, region in enumerate(modulation_dict[orientation].keys()):
         hand_use_mod[orientation][region] = {}
-        # plt.figure(figsize=(5, 5))
         ax = axs[idx]
         multiplier = 0
         hand_mod = []
-        for side, modulation in modulation_dict[orientation][region].items():
+        for side, mod_tuple in modulation_dict[orientation][region].items():
+            modulation = mod_tuple['modulations']
+            modulation[-2] = np.logical_or(modulation[-2], modulation[-1])
+            modulation = modulation[:-1]
             hand_mod.append(modulation)
             offset = width*multiplier
             mod_perc = np.average(modulation, axis=1)
-            # max_height = max(mod_perc.max()*100, max_height)
             max_height = 100
             rects = ax.bar(x+offset, mod_perc*100, width, label=side)
-            # ax.bar_label(rects, padding=3)
             multiplier+= 1
         # Compute the share of modulated neurons across each hand
         hand_nonSpecific = ~np.bitwise_xor(hand_mod[0], hand_mod[1])
@@ -381,7 +371,7 @@ for orientation in modulation_dict.keys():
         ax.set_ylim([0, max_height])
         ax.set_xlabel('Epochs')
         ax.set_title(f'{region}')
-        ax.set_xticks(x + width * (multiplier - 1) / 2, [event_map[e] for e in events])
+        ax.set_xticks(x + width * (multiplier - 1) / 2, [e.split(' ')[0] for e in list(epoch_window_map.keys())[1:-1]])
         # ax.legend(loc='upper left', ncols=3)
     handles, labels = plt.gca().get_legend_handles_labels()
     f.legend(handles, labels, loc = (0.5, 0), ncols=3)
@@ -393,24 +383,22 @@ for orientation in modulation_dict.keys():
 
 width = 0.3
 for orientation in modulation_dict.keys():
-    f, axs = plt.subplots(nrows=1, ncols=3, figsize=(12,5), sharey='row')
+    f, axs = plt.subplots(nrows=1, ncols=3, figsize=(12,4), sharey='row')
     for idx, region in enumerate(hand_use_mod[orientation].keys()):
-        # plt.figure(figsize=(5, 5))
         ax = axs[idx]
         multiplier = 0
+        temp = 0
         for side, modulation in hand_use_mod[orientation][region].items():
+            # modulation = mod_tuple['modulations']
             offset = width*multiplier
             hand_mod_perc = np.average(modulation, axis=1)
-            # max_height = max(mod_perc.max()*100, max_height)
             max_height = 100
             rects = ax.bar(x+offset, hand_mod_perc*100, width, label=side)
-            # ax.bar_label(rects, padding=3)
             multiplier+= 1
-        # ax.set_ylabel('Neurons(%)')
         ax.set_ylim([0, max_height])
         ax.set_xlabel('Epochs')
         ax.set_title(f'{region}')
-        ax.set_xticks(x + width * (multiplier - 1) / 2, [event_map[e] for e in events])
+        ax.set_xticks(x + width * (multiplier - 1) / 2, [e.split(' ')[0] for e in list(epoch_window_map.keys())[1:-1]])
     handles, labels = plt.gca().get_legend_handles_labels()
     f.legend(handles, labels, loc=(0.5, 0), ncols=3)
     sns.move_legend(f, "lower center", bbox_to_anchor=(.5, -.06), ncol=3)

@@ -138,7 +138,7 @@ def t_test(sdf1, sdf2, q=0.025, paired = False):
         s_pop = np.sqrt(((n1-1)*s1**2 + (n2-1)*s2**2)/(n1+n2-2))
         s_mean = s_pop*np.sqrt(1/n1+1/n2)
         t_vals = (m1-m2)/s_mean
-        df = n1+n2-2
+        df = np.ones_like(m1)*(n1+n2-2)
     else:
         v1, v2 = s1**2/n1, s2**2/n2
         # if v1.min()==0 or v2.min() ==0:

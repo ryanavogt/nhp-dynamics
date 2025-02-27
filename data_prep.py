@@ -29,8 +29,6 @@ for file in file_list:
     year, month, day = date_flat[0:4], date_flat[4:6], date_flat[6:]
     date = f'{year}_{month}_{day}'
     print(date)
-    # How many units for this session
-    # units = [1, 2]
 
     # Load trial times for the session
     """
@@ -66,7 +64,6 @@ for file in file_list:
     Hemis                   Hemisphere of brain (relative to ???)   - str (contra or ipsi)
     """
     df = pd.read_excel(f'{sorting_dir}/SortingNotes_{year}{month}{day}_{name_label}.xlsx')
-
 
     # Sort neurons by region - Assign channel and number of cells per channel to region
     neurons = {1: {}, 2: {}}
