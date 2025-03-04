@@ -11,7 +11,7 @@ import matplotlib as mpl
 from sig_proc import *
 
 import seaborn as sns
-
+os.environ['KMP_DUPLICATE_LIB_OK']='True'
 
 sns.set()
 sns.set_style(style='white')
@@ -26,8 +26,8 @@ event_map = {'trialRewardDrop': 'Cue', 'trialReachOn':'Reach', 'trialGraspOn':'G
 # Define the reference events and time window defining each epoch
 epoch_window_map = {'Pre-cue':  {'event': 'trialRewardDrop', 'window': [-700,    -100]},
                    'Post-cue': {'event': 'trialRewardDrop', 'window': [0,       100]},
-                   'Reach':    {'event': 'trialReachOn',    'window': [-700,    -100]},
-                   'Grasp On': {'event': 'trialGraspOn',    'window': [-700,    -100]},
+                   'Reach':    {'event': 'trialReachOn',    'window': [-100,    200]},
+                   'Grasp On': {'event': 'trialGraspOn',    'window': [-100,    500]},
                    'Grasp Off':{'event': 'trialEnd',        'window': [-700,    -400]}}
 
 #Define directories of data
@@ -180,7 +180,6 @@ else:
         pkl.dump(area_max_rate, max_rate_file)
     with open(peak_order_filename, 'wb') as peak_order_file:
         pkl.dump(peak_order_dict, peak_order_file)
-
 """
 Generate plots after loading data
 """
@@ -205,7 +204,7 @@ for area_label in area_summary_dict.keys():
         plot_dict[orientation][region][event][lat] = area_sdf
         max_dict[orientation][region][event][lat] = {'max':area_sdf.max(axis=1), 'order': peak_order[event]}
 
-skip_plots = True
+skip_plots = True # To save time
 neuron_plot_dir = f'{summary_dir}/Neuron Plots'
 index_sides = ['ipsi', 'contra']
 for index_side in index_sides:
@@ -269,7 +268,7 @@ for area_label in area_summary_dict.keys():
             continue
         event = epoch_window_map[epoch]['event']
         event_window = epoch_window_map[epoch]['window']
-        event_mask = (full_window>event_window[0]) * (full_window<event_window[1])
+        event_mask = (full_window>event_window[0]) * (full_window<=event_window[1])
         area_sdf = all_sdf_dict[region_key][event][:, event_mask]
         event_spike_maxes[region_key][epoch] = area_sdf.max(axis=1)
     event_neuron_peaks = np.vstack(event_spike_maxes[region_key].values())
@@ -282,9 +281,13 @@ for area_label in area_summary_dict.keys():
     event_neuron_max[orient][region]['neurons'] = event_neuron_peaks.shape[1]
     event_neuron_max[orient][region]['proportions'][lat_map[lat]]= event_peak_proportions
 
+merge_grasp = False
 for orientation in event_neuron_max.keys():
     f, axs = plt.subplots(nrows=1, ncols=3, figsize=(12, 4), sharey='row')
-    x = np.arange(len(events)-1)
+    event_list_length = len(events) #Do not plot pre-cue
+    if not merge_grasp:
+        event_list_length -= 1
+    x = np.arange(event_list_length)
     max_height = 0
     for idx, region in enumerate(event_neuron_max[orientation].keys()):
         ax = axs[idx]
@@ -295,9 +298,7 @@ for orientation in event_neuron_max.keys():
             offset = width*multiplier
             max_height = max(proportion.max()*100, max_height)
             rects = ax.bar(x+offset, proportion*100, width, label=side)
-            # ax.bar_label(rects, padding=3)
             multiplier+= 1
-        # ax.set_ylabel('Neurons(%)')
         ax.set_xlabel('Epochs')
         ax.set_title(f'{region}')
         ax.set_xticks(x+width*(multiplier-1)/2, [e.split(' ')[0] for e in list(epoch_window_map.keys())[1:-1]])
@@ -342,6 +343,9 @@ for region in all_sdf_dict.keys():
         modulation_dict[orientation][area] = {}
     modulation_dict[orientation][area][lat_map[lat]] = {'modulations':event_modulations, 'tVals':event_tVals}
 
+"""
+Plot modulation by epoch and compute modulation by hand used
+"""
 hand_use_mod = {}
 for orientation in modulation_dict.keys():
     f, axs = plt.subplots(nrows=1, ncols=3, figsize=(12, 4), sharey='row')
@@ -353,7 +357,8 @@ for orientation in modulation_dict.keys():
         hand_mod = []
         for side, mod_tuple in modulation_dict[orientation][region].items():
             modulation = mod_tuple['modulations']
-            modulation[-2] = np.logical_or(modulation[-2], modulation[-1])
+            if merge_grasp:
+                modulation[-2] = np.logical_or(modulation[-2], modulation[-1])
             modulation = modulation[:-1]
             hand_mod.append(modulation)
             offset = width*multiplier
