@@ -21,32 +21,33 @@ sns.set_style(style='white')
 monkey_name_map = {'R': 'Red', 'G': 'Green'}
 event_map = {'trialRewardDrop': 'Cue', 'trialReachOn':'Reach', 'trialGraspOn':'GraspOn', 'trialEnd':'GraspOff'}
 # Define the reference events and time window defining each epoch
-epoch_window_map = {'Pre-cue':  {'event': 'trialRewardDrop', 'window': [-700,    -100]},
+epoch_window_map = {'Pre-cue':  {'event': 'trialRewardDrop','window': [-700,    -100]},
                    'Post-cue': {'event': 'trialRewardDrop', 'window': [0,       100]},
                    'Reach':    {'event': 'trialReachOn',    'window': [-100,    200]},
                    'Grasp On': {'event': 'trialGraspOn',    'window': [-100,    500]},
-                   'Grasp Off':{'event': 'trialEnd',        'window': [-700,    -400]}}
+                   'Grasp Off':{'event': 'trialGraspOff',   'window': [-200,    -100]}}
 
 #Define directories of data
 data_dir = 'Data/Sorted_Inactivation'
 matlab_dir = f'{data_dir}/matlabFiles'
 sorting_dir = f'{data_dir}/sortingNotes'
 summary_dir = f'Data/Processed/Summary'
-pca_dir = f'{summary_dir}/PCA'
-if not os.path.exists(pca_dir):
-    os.mkdir(pca_dir)
 
 lat_map = {'c':'contralateral', 'i':'ipsilateral'}
 hand_list = ['R', 'L']
-binsize = 10
+binsize = 1
 kernel_width = 100
 full_window = np.arange(-1000, 1000+binsize, binsize)
+
+pca_dir = f'{summary_dir}/PCA_b{binsize}_k{kernel_width}'
+if not os.path.exists(pca_dir):
+    os.mkdir(pca_dir)
 
 all_sdf_filename = f'{summary_dir}/sdfDict_bin{binsize}_k{kernel_width}.p'
 with open(all_sdf_filename, 'rb') as sdf_file:
     all_sdf_dict = pkl.load(sdf_file)
 
-pop_filename = f'{pca_dir}/pop_dict.p'
+pop_filename = f'{pca_dir}/pop_dict_b{binsize}_k{kernel_width}.p'
 if os.path.exists(pop_filename):
     with open(pop_filename, 'rb') as pop_file:
         pop_tuple = pkl.load(pop_file)
@@ -80,7 +81,7 @@ os.environ['KMP_DUPLICATE_LIB_OK']='True'
 sides = ['i', 'c']
 n_plot = 4
 q = 10 # Estimate for number of PCs to use
-pca_filename = f'{pca_dir}/TotalPCA_dict.p'
+pca_filename = f'{pca_dir}/TotalPCA_dict_b{binsize}_k{kernel_width}.p'
 if os.path.exists(pca_filename):
     with open(pca_filename, 'rb') as pca_file:
         pca_dict = pkl.load(pca_file)

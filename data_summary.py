@@ -82,7 +82,7 @@ fig, axs = plt.subplots(1, 2, figsize=(16,5), sharey='row', sharex='row')
 all_text_vals = []
 max_length, max_counts = 0, 0
 bin_width = 20
-u_lim = 500
+u_lim = 1000
 for idx, monkey in enumerate(eventTimes_summary.keys()):
     ax = axs[idx]
     event_lengths[monkey] = {}
@@ -106,9 +106,10 @@ for idx, monkey in enumerate(eventTimes_summary.keys()):
         e_max = np.max(e_lengths)
         e_mean = np.mean(e_lengths)
         e_min = np.min(e_lengths)
+        e_std = np.std(e_lengths)
         max_length = max(max_length, e_max)
         max_counts = max(np.max(counts), max_counts)
-        text_vals.append(f'{event_label}: Min:{e_min:d}, Mean:{e_mean:.0f}, Max:{e_max}')
+        text_vals.append(f'{event_label}: Min:{e_min:d}, Max:{e_max}, Mean:{e_mean:.0f}, Std:{e_std:.0f}')
     all_text_vals.append(text_vals)
     ax.set_title(f'Monkey {monkey}')
     ax.set_xlabel(f'Event Duration (ms)')
@@ -127,7 +128,7 @@ handles, labels = plt.gca().get_legend_handles_labels()
 fig.legend(handles, labels, loc=(0.5, -.01), ncols=4)
 fig.suptitle('Inter-Event Durations')
 sns.despine()
-plt.savefig(f'{summary_dir}/EventDurations.png', bbox_inches='tight', dpi=200)
+plt.savefig(f'{summary_dir}/EventDurations_max{u_lim}.png', bbox_inches='tight', dpi=200)
 
 for monkey in ['G', 'R']:
     fig_dims = (5, 2.5)

@@ -22,13 +22,13 @@ monkey_name_map: Map labels to full names   - Name label (R, G) -> Full name (Re
 event_map: Name of events for plotting      - Raw event name -> Shortened event name (for labels on plots)
 """
 monkey_name_map = {'R': 'Red', 'G': 'Green'}
-event_map = {'trialRewardDrop': 'Cue', 'trialReachOn':'Reach', 'trialGraspOn':'GraspOn', 'trialEnd':'GraspOff'}
+event_map = {'trialRewardDrop': 'Cue', 'trialReachOn':'Reach', 'trialGraspOn':'GraspOn', 'trialGraspOff':'GraspOff'}
 # Define the reference events and time window defining each epoch
-epoch_window_map = {'Pre-cue':  {'event': 'trialRewardDrop', 'window': [-700,    -100]},
-                   'Post-cue': {'event': 'trialRewardDrop', 'window': [0,       100]},
-                   'Reach':    {'event': 'trialReachOn',    'window': [-100,    200]},
-                   'Grasp On': {'event': 'trialGraspOn',    'window': [-100,    500]},
-                   'Grasp Off':{'event': 'trialGraspOff',        'window': [-200,    100]}}
+epoch_window_map = {'Pre-cue':  {'event': 'trialRewardDrop',    'window': [-700,   -100]},
+                   'Post-cue': {'event': 'trialRewardDrop',     'window': [   0,    100]},
+                   'Reach':    {'event': 'trialReachOn',        'window': [-100,    200]},
+                   'Grasp On': {'event': 'trialGraspOn',        'window': [-100,    500]},
+                   'Grasp Off':{'event': 'trialGraspOff',       'window': [-200,    100]}}
 
 #Define directories of data
 data_dir = 'Data/Sorted_Inactivation'
@@ -41,11 +41,11 @@ if not os.path.exists(summary_dir):
 
 lat_map = {'c':'contralateral', 'i':'ipsilateral'}
 hand_list = ['R', 'L']
-events = ['trialRewardDrop', 'trialReachOn', 'trialGraspOn', 'trialEnd']
-binsize = 10
-kernel_width = 100
+events = ['trialRewardDrop', 'trialReachOn', 'trialGraspOn', 'trialGraspOff']
+binsize = 5
+kernel_width = 25
 load_override_preprocess = False
-load_override = False
+load_override = True
 
 # Extract All Sessions from their Sorting Notes
 file_list = [f for f in glob.glob(f'{sorting_dir}/SortingNotes_*.xlsx')]
@@ -204,8 +204,8 @@ for area_label in area_summary_dict.keys():
         plot_dict[orientation][region][event][lat] = area_sdf
         max_dict[orientation][region][event][lat] = {'max':area_sdf.max(axis=1), 'order': peak_order[event]}
 
-skip_plots = True # To save time
-neuron_plot_dir = f'{summary_dir}/Neuron Plots'
+skip_plots = False # To save time
+neuron_plot_dir = f'{summary_dir}/Neuron Plots_bin{binsize}_kernel{kernel_width}'
 index_sides = ['ipsi', 'contra']
 for index_side in index_sides:
     if not os.path.exists(neuron_plot_dir):
@@ -271,7 +271,7 @@ for area_label in area_summary_dict.keys():
         event_mask = (full_window>event_window[0]) * (full_window<=event_window[1])
         area_sdf = all_sdf_dict[region_key][event][:, event_mask]
         event_spike_maxes[region_key][epoch] = area_sdf.max(axis=1)
-    event_neuron_peaks = np.vstack(event_spike_maxes[region_key].values())
+    event_neuron_peaks = np.vstack(list(event_spike_maxes[region_key].values()))
     # event_neuron_max[region_key] = event_neuron_peaks == area_max_rate[region_key]
     # for idx, event in enumerate(events):
     #     event_peak_proportions[event] = np.average(event_neuron_max[region_key]==idx)
