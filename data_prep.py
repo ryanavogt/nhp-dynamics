@@ -51,6 +51,8 @@ for file in file_list:
     event_df = pd.DataFrame(event_times, columns=events)
     event_df = event_df.astype({'trialNumbers':int})
 
+    if monkey_name == 'Red':
+        print(event_df)
     # Load sorting notes for session neuron metadata
     """
     Contents:
@@ -103,6 +105,7 @@ for file in file_list:
     trial_data['trialGraspOn'] = event_df['trialGraspOn'] - trial_data['trialStartTimes']
     trial_data['trialReachOn'] = event_df['trialReachOn'] - trial_data['trialStartTimes']
     trial_data['trialRewardDrop'] = event_df['trialRewardDrop'] - trial_data['trialStartTimes']
+    trial_data['trialGraspOff'] = event_df['trialGraspOff'] - trial_data['trialStartTimes']
 
 
     with open(f'{save_dir}/trial_data.p', 'wb') as f:

@@ -1,6 +1,7 @@
 import pickle as pkl                #Saving/loading data (built-in)
 import os                           #Directory Creation and Verification (built-in)
 import glob
+import math
 
 # The following packages need to be installed in your virtual environment (usig conda or pip)
 import pandas as pd                 #Loading tables
@@ -8,11 +9,15 @@ import numpy as np                  #Array operations
 import matplotlib.pyplot as plt     #Generating plots
 from pandas.plotting import table   #Plotting Tables
 
+import seaborn as sns
+sns.set()
+sns.set_style(style='white')
 
 #Define directories of data
 data_dir = 'Data/Sorted_Inactivation'
 matlab_dir = f'{data_dir}/matlabFiles'
 sorting_dir = f'{data_dir}/sortingNotes'
+summary_dir = f'Data/Processed/Summary'
 
 file_list = [f for f in glob.glob(f'{sorting_dir}/SortingNotes_*.xlsx')]
 
@@ -27,12 +32,15 @@ for name in file_names_split:
 
 data_summary = {}
 spikes_summary = {}
+eventTimes_summary = {}
 for _, date, monkey in file_names_split:
     print(date)
     if not monkey in data_summary.keys():
         data_summary[monkey] = {}
     if not monkey in spikes_summary.keys():
         spikes_summary[monkey] = {}
+    if not monkey in eventTimes_summary.keys():
+        eventTimes_summary[monkey] = {}
     if monkey == 'G':
         processed_dir = f'Data/Processed/Monkey_Green/{date[:4]}_{date[4:6]}_{date[6:]}'
     else:
@@ -41,6 +49,14 @@ for _, date, monkey in file_names_split:
         print(f'Data not processed for Monkey {monkey} on {date[:4]}_{date[4:6]}_{date[6:]}')
         continue
     else:
+        event_file_name = f'{processed_dir}/eventTimes.p'
+        with open(event_file_name, 'rb') as event_file:
+            rel_event_times = pkl.load(event_file)
+        for event in rel_event_times.keys():
+            print(event)
+            if event not in eventTimes_summary[monkey]:
+                eventTimes_summary[monkey][event] = []
+            eventTimes_summary[monkey][event].append(rel_event_times[event])
         area_spikes = {}
         area_neurons = {}
         for unit in [1,2]:
@@ -60,6 +76,58 @@ for _, date, monkey in file_names_split:
     print(f'Neurons: {area_neurons}')
     data_summary[monkey][f'{date[:4]}/{date[4:6]}/{date[6:]}'] = area_neurons
     spikes_summary[monkey][f'{date[:4]}/{date[4:6]}/{date[6:]}'] = area_spikes
+
+event_lengths = {}
+fig, axs = plt.subplots(1, 2, figsize=(16,5), sharey='row', sharex='row')
+all_text_vals = []
+max_length, max_counts = 0, 0
+bin_width = 20
+u_lim = 500
+for idx, monkey in enumerate(eventTimes_summary.keys()):
+    ax = axs[idx]
+    event_lengths[monkey] = {}
+    temp_time = 0
+    text_vals=[]
+    all_lengths = []
+    for event in eventTimes_summary[monkey]:
+        eventTimes_summary[monkey][event]=np.hstack(eventTimes_summary[monkey][event])
+        e_lengths = eventTimes_summary[monkey][event] - temp_time
+        event_lengths[monkey][event] = e_lengths
+        temp_time = eventTimes_summary[monkey][event]
+        all_lengths.append(e_lengths)
+    all_lengths = np.hstack(e_lengths)
+    e_max = np.max(all_lengths)
+    bin_number = math.ceil(u_lim/bin_width)
+    for event in eventTimes_summary[monkey]:
+        event_label = event.split('trial')[-1]
+        e_lengths = event_lengths[monkey][event]
+        counts, bins = np.histogram(e_lengths[e_lengths<u_lim], bin_number)
+        ax.stairs(counts, bins, label = event_label)
+        e_max = np.max(e_lengths)
+        e_mean = np.mean(e_lengths)
+        e_min = np.min(e_lengths)
+        max_length = max(max_length, e_max)
+        max_counts = max(np.max(counts), max_counts)
+        text_vals.append(f'{event_label}: Min:{e_min:d}, Mean:{e_mean:.0f}, Max:{e_max}')
+    all_text_vals.append(text_vals)
+    ax.set_title(f'Monkey {monkey}')
+    ax.set_xlabel(f'Event Duration (ms)')
+    ax.set_ylabel(f'Count')
+    ax.set_xlim([0, u_lim])
+
+prop_cycle = plt.rcParams['axes.prop_cycle']
+colors = prop_cycle.by_key()['color']
+all_text_vals = np.vstack(all_text_vals)
+for k, (text_vals, color) in enumerate(zip(all_text_vals.T, colors)):
+    for i in range(len(text_vals)):
+        text = text_vals[i]
+        print(text)
+        axs[i].text(x = 0.6*u_lim, y = (.9-0.1*k)*max_counts, s = text, size = 'x-small', color=color)
+handles, labels = plt.gca().get_legend_handles_labels()
+fig.legend(handles, labels, loc=(0.5, -.01), ncols=4)
+fig.suptitle('Inter-Event Durations')
+sns.despine()
+plt.savefig(f'{summary_dir}/EventDurations.png', bbox_inches='tight', dpi=200)
 
 for monkey in ['G', 'R']:
     fig_dims = (5, 2.5)

@@ -28,7 +28,7 @@ epoch_window_map = {'Pre-cue':  {'event': 'trialRewardDrop', 'window': [-700,   
                    'Post-cue': {'event': 'trialRewardDrop', 'window': [0,       100]},
                    'Reach':    {'event': 'trialReachOn',    'window': [-100,    200]},
                    'Grasp On': {'event': 'trialGraspOn',    'window': [-100,    500]},
-                   'Grasp Off':{'event': 'trialEnd',        'window': [-700,    -400]}}
+                   'Grasp Off':{'event': 'trialGraspOff',        'window': [-200,    100]}}
 
 #Define directories of data
 data_dir = 'Data/Sorted_Inactivation'
@@ -239,7 +239,7 @@ for index_side in index_sides:
 Identify epoch of maximal spike rate and find proportion of neurons with peak in each epoch.
 """
 epoch_names = ['trialRewardDrop', 'trialReachOn', 'trialGraspOn', 'trialGraspOff']
-epoch_windows = {'trialRewardDrop': [0, 100], 'trialReachOn': [-100, 200], 'trialGraspOn':[-100, 500], 'trialEnd':[-700, -400]}
+epoch_windows = {'trialRewardDrop': [0, 100], 'trialReachOn': [-100, 200], 'trialGraspOn':[-100, 500], 'trialGraspOff':[-200, 100]}
 # epoch_windows = {'trialRewardDrop': [0, 100], 'trialReachOn': [-100, 200], 'trialGraspOn':[-100, 500]}
 # events = ['trialRewardDrop', 'trialReachOn', 'trialGraspOn', 'trialGraspOff']
 event_spike_maxes = {}
