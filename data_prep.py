@@ -139,8 +139,8 @@ for file in file_list:
 
         # Record relative event times for each trial
         events = ['trialRewardDrop', 'trialReachOn', 'trialGraspOn', 'trialGraspOff']
-        event_thresholds = {'trialRewardDrop':[500, 3000], 'trialReachOn':[100, 500],
-                            'trialGraspOn':[100, 600], 'trialGraspOff':[100, 1500]}
+        event_thresholds = {'trialRewardDrop':[500, 3000], 'trialReachOn':[200, 500],
+                            'trialGraspOn':[100, 600], 'trialGraspOff':[200, 1500]}
         rel_event_times = {}
         prev_times = 0
         event_masks = []

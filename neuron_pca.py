@@ -35,8 +35,8 @@ summary_dir = f'Data/Processed/Summary'
 
 lat_map = {'c':'contralateral', 'i':'ipsilateral'}
 hand_list = ['R', 'L']
-binsize = 1
-kernel_width = 100
+binsize = 5
+kernel_width = 25
 full_window = np.arange(-1000, 1000+binsize, binsize)
 
 pca_dir = f'{summary_dir}/PCA_b{binsize}_k{kernel_width}'
@@ -47,7 +47,7 @@ all_sdf_filename = f'{summary_dir}/sdfDict_bin{binsize}_k{kernel_width}.p'
 with open(all_sdf_filename, 'rb') as sdf_file:
     all_sdf_dict = pkl.load(sdf_file)
 
-pop_filename = f'{pca_dir}/pop_dict_b{binsize}_k{kernel_width}.p'
+pop_filename = f'{pca_dir}/pop_dict_merged_b{binsize}_k{kernel_width}.p'
 if os.path.exists(pop_filename):
     with open(pop_filename, 'rb') as pop_file:
         pop_tuple = pkl.load(pop_file)

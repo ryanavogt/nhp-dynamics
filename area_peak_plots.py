@@ -45,7 +45,7 @@ events = ['trialRewardDrop', 'trialReachOn', 'trialGraspOn', 'trialGraspOff']
 binsize = 5
 kernel_width = 25
 load_override_preprocess = False
-load_override = True
+load_override = False
 
 # Extract All Sessions from their Sorting Notes
 file_list = [f for f in glob.glob(f'{sorting_dir}/SortingNotes_*.xlsx')]
@@ -55,8 +55,8 @@ file_names_split = [n.split('_') for n in file_names]
 date_strings = []
 monkey_labels = []
 for name in file_names_split:
-    date_strings.append(name[1]) #Date of Session
-    monkey_labels.append(name[2])#Monkey (G or R)
+    date_strings.append(name[1])    #Date of Session
+    monkey_labels.append(name[2])   #Monkey (G or R)
 
 """
 Aggregate all neurons across all sessions within a single region, separated by lateral 
@@ -159,16 +159,14 @@ else:
                 neuron_spikes = area_summary_dict[region_key][event]['spikes'][:, neuron_mask]
                 neuron_spikes[0, :] = 1
                 neuron_psth = gen_psth(neuron_spikes.T, binsize=binsize, window=window_range, neurons=1)
+                neuron_psth = gen_psth(neuron_spikes.T, binsize=binsize, window=window_range, neurons=1)
                 neuron_sdf, _ = gen_sdf(neuron_psth, w=kernel_width, bin_size=binsize, ftype='Gauss', multi_unit=False)
-                # neuron_scales[neuron_idx] = neuron_sdf[:].max()
                 peak_location = neuron_sdf[:].argmax()
                 neuron_peak_times[neuron_idx] = peak_location
                 time_scale = neuron_psth[:,0]
-                # sdf_scaled_list.append(neuron_sdf[:, 0].T/neuron_scales[neuron_idx])
                 sdf_list.append(neuron_sdf[:, 0].T)
             peak_order = np.argsort(neuron_peak_times)
             peak_order_dict[area_label][event] = peak_order
-            # area_scale_sdf = np.vstack(sdf_scaled_list)
             area_sdf = np.vstack(sdf_list)
             all_sdf_dict[region_key][event] = area_sdf
             event_max_rate = np.max(area_sdf, axis=1)
