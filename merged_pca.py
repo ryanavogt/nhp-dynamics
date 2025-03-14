@@ -35,60 +35,48 @@ hand_list = ['R', 'L']
 binsize = 5
 kernel_width = 25
 full_window = np.arange(-1000, 1000+binsize, binsize)
+new_popdict = True
 
 pca_dir = f'{summary_dir}/PCA_b{binsize}_k{kernel_width}'
 if not os.path.exists(pca_dir):
     os.mkdir(pca_dir)
 
-all_sdf_filename = f'{summary_dir}/sdfDict_bin{binsize}_k{kernel_width}.p'
+all_sdf_filename = f'{summary_dir}/merged_sdfDict_bin{binsize}_k{kernel_width}.p'
 with open(all_sdf_filename, 'rb') as sdf_file:
     all_sdf_dict = pkl.load(sdf_file)
 
 pop_filename = f'{pca_dir}/pop_dict_merged_b{binsize}_k{kernel_width}.p'
-if os.path.exists(pop_filename):
+if os.path.exists(pop_filename) and not new_popdict:
     with open(pop_filename, 'rb') as pop_file:
         pop_tuple = pkl.load(pop_file)
         merged_population_dict, region_map = pop_tuple
         print('Population Dictionary Loaded')
 else:
-    population_dict = {}
+    merged_population_dict = {}
     region_map = {'idx':0}
     for area in all_sdf_dict.keys():
         region, orientation = area.split('_')
         side, cortex = region[0], region[1:]
-        if orientation not in population_dict.keys():
-            population_dict[orientation] = {}
-        for epoch in epoch_window_map.keys():
-            event_name = epoch_window_map[epoch]['event']
-            event_window = epoch_window_map[epoch]['window']
-            event_mask = (full_window > event_window[0]) * (full_window <= event_window[1])
-            sdf = all_sdf_dict[area][event_name][:, event_mask]
-            if epoch not in population_dict[orientation]:
-                population_dict[orientation][epoch] = []
-            population_dict[orientation][epoch].append(sdf)
-            if region not in region_map.keys():
-                region_boundaries = [region_map['idx'], region_map['idx'] + sdf.shape[0]]
-                region_map[region] = region_boundaries
-                region_map['idx'] += sdf.shape[0]
-
-    merged_population_dict = {}
-    for orientation in population_dict.keys():
-        merged_sdf = []
-        for epoch in population_dict[orientation].keys():
-            merged_sdf.append(np.vstack(population_dict[orientation][epoch]))
-        merged_sdf = np.hstack(merged_sdf)
-        merged_population_dict[orientation] = merged_sdf
+        if orientation not in merged_population_dict.keys():
+            merged_population_dict[orientation] = []
+        sdf = all_sdf_dict[area]
+        merged_population_dict[orientation].append(sdf[:,0].T)
+        if region not in region_map.keys():
+            region_boundaries = [region_map['idx'], region_map['idx'] + sdf.shape[0]]
+            region_map[region] = region_boundaries
+            region_map['idx'] += sdf.shape[0]
+    for orientation, sdf_list in merged_population_dict.items():
+        merged_population_dict[orientation] = np.vstack(sdf_list)
     del region_map['idx']
-    with open(pop_filename, 'wb') as pop_file:
-        pkl.dump((merged_population_dict, region_map), pop_file)
 
 
+pca_overwrite = True
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
 sides = ['i', 'c']
 n_plot = 4
 q = 10 # Estimate for number of PCs to use
 pca_filename = f'{pca_dir}/MergedPCA_dict_b{binsize}_k{kernel_width}.p'
-if os.path.exists(pca_filename):
+if os.path.exists(pca_filename) and not pca_overwrite:
     with open(pca_filename, 'rb') as pca_file:
         pca_dict = pkl.load(pca_file)
     new_pca = False
@@ -101,7 +89,8 @@ for orientation in merged_population_dict.keys():
         pca_dict[orientation] = {}
     pop_sdf = torch.Tensor(merged_population_dict[orientation]).detach()
     if new_pca:
-        U, S, V = torch.pca_lowrank(pop_sdf, center=True, q=q)
+        print('Computing PCA')
+        U, S, V = torch.pca_lowrank(pop_sdf, center=False, q=q)
         merged_population_dict[orientation]= pop_sdf
         pca_dict[orientation] = {'U': U, 'S': S, 'V': V}
     else:
@@ -129,7 +118,7 @@ for orientation in merged_population_dict.keys():
                       colors='k', linestyles = 'dashed')
         axs[row][column].set_xticks(list(event_times.values()), labels = event_times.keys())
         axs[row][column].set_title(f'{region}')
-    # fig.suptitle(f'First {n_plot} PCs over trial, {orientation.capitalize()}')
+    fig.suptitle(f'PCs by region over trial, {orientation.capitalize()}')
     handles, labels = axs[0][0].get_legend_handles_labels()
     fig.legend(handles, labels, ncols=2)
     fig.savefig(f'{pca_dir}/PCANeurons_merged_{orientation}.png', bbox_inches='tight', dpi=300)

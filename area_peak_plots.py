@@ -44,8 +44,8 @@ hand_list = ['R', 'L']
 events = ['trialRewardDrop', 'trialReachOn', 'trialGraspOn', 'trialGraspOff']
 binsize = 5
 kernel_width = 25
-load_override_preprocess = False
-load_override = False
+load_override_preprocess = True
+load_override = True
 
 # Extract All Sessions from their Sorting Notes
 file_list = [f for f in glob.glob(f'{sorting_dir}/SortingNotes_*.xlsx')]
@@ -152,6 +152,7 @@ else:
             if region_key in area_summary_dict:
                 area_summary_dict[region_key][event]['spikes'] = np.concatenate(area_summary_dict[region_key][event]['spikes'], axis=1)
             sdf_list = []
+            psth_list = []
             neuron_count = area_summary_dict[region_key][event]['neurons'].astype(int)
             neuron_peak_times = np.zeros(neuron_count)
             for neuron_idx in range(neuron_count):
@@ -159,7 +160,7 @@ else:
                 neuron_spikes = area_summary_dict[region_key][event]['spikes'][:, neuron_mask]
                 neuron_spikes[0, :] = 1
                 neuron_psth = gen_psth(neuron_spikes.T, binsize=binsize, window=window_range, neurons=1)
-                neuron_psth = gen_psth(neuron_spikes.T, binsize=binsize, window=window_range, neurons=1)
+                psth_list.append(neuron_psth)
                 neuron_sdf, _ = gen_sdf(neuron_psth, w=kernel_width, bin_size=binsize, ftype='Gauss', multi_unit=False)
                 peak_location = neuron_sdf[:].argmax()
                 neuron_peak_times[neuron_idx] = peak_location
