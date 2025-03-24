@@ -24,9 +24,12 @@ def region_pca(region_map, pop_sdf, region_name):
             pca_sdf.append(pop_sdf[pca_ind[0]:pca_ind[1]])
     pca_sdf = torch.vstack(pca_sdf)
     # U, S, V = torch.pca_lowrank(pca_sdf, center=True, q=q)
-    cov = torch.cov(pca_sdf.T)
-    U, S, V = torch.linalg.svd(cov, full_matrices = False)
-    # U, S, V = torch.linalg.svd(pca_sdf, full_matrices=False)
+    cov = torch.cov(pca_sdf)
+    sdf_mean = pca_sdf.mean(dim=1, keepdim=True)
+    sdf_centered = pca_sdf - sdf_mean.repeat(1, pca_sdf.shape[1])
+    sdf_square = sdf_centered@sdf_centered.T
+    # U, S, V = torch.linalg.svd(cov, full_matrices = False)
+    U, S, V = torch.linalg.svd(sdf_square, full_matrices=False)
 
     return U, S, V.T, cov
 
@@ -43,6 +46,9 @@ def region_variance(pc_dict, pop_sdf, region_map, baseline_region, target_region
     base_cov = base_pca['cov']
     base_pcs = base_pca['V']
     base_S = base_pca['S']
+    base_window = region_map[baseline_region]
+    base_pc_proj = pop_sdf[base_window[0]:base_window[1]].T@base_pcs
+    # base_var_sum = torch.cumsum(torch.diagonal(base_pc_proj.T@base_cov@base_pc_proj), dim=0)
     base_var_sum = torch.cumsum(torch.diagonal(base_pcs.T@base_cov@base_pcs), dim=0)
     base_var_trace = base_var_sum.max()
     f_cov = plt.figure(figsize=(8,8))
@@ -52,16 +58,15 @@ def region_variance(pc_dict, pop_sdf, region_map, baseline_region, target_region
     f_var = plt.figure(figsize=(3, 5))
     plt.scatter(np.arange(1, pc_dims+1), base_var_sum[:pc_dims]/base_var_trace, label = baseline_region)
     plt.title(f'Variance Captured by First {pc_dims} {baseline_region} PCs')
-    f_S = plt.figure()
-    plt.scatter(np.arange(1, pc_dims+1), torch.cumsum(base_S, dim=0)[:pc_dims]/base_S.sum(), label = baseline_region)
-    plt.title(f'Variance Captured by First {pc_dims} {baseline_region} PCS, S Matrix')
+    # f_S = plt.figure()
+    # plt.scatter(np.arange(1, pc_dims+1), torch.cumsum(base_S, dim=0)[:pc_dims]/base_S.sum(), label = baseline_region)
+    # plt.title(f'Variance Captured by First {pc_dims} {baseline_region} PCS, S Matrix')
 
-    f_pcs, ax = plt.subplots(1, 1, figsize=(8, 8), subplot_kw={'projection': '3d'})
-    base_window = region_map[baseline_region]
-    plot_pca = torch.matmul(pop_sdf[base_window[0]:base_window[1]], base_pcs[:, :3])
-    Z = plot_pca[:, 2]
-    ax.scatter(xs = plot_pca[:, 0], ys = plot_pca[:, 1], zs = Z, label = baseline_region)
-    ax.set_title(f'Projections onto {baseline_region} PCs')
+    # f_pcs, ax = plt.subplots(1, 1, figsize=(8, 8), subplot_kw={'projection': '3d'})
+    # plot_pca = base_pc_proj[:, :3]
+    # Z = plot_pca[:, 2]
+    # ax.scatter(xs = plot_pca[:, 0], ys = plot_pca[:, 1], zs = Z, label = baseline_region)
+    # ax.set_title(f'Projections onto {baseline_region} PCs')
     for target_region in target_regions:
         if target_region == baseline_region:
             continue
@@ -77,21 +82,21 @@ def region_variance(pc_dict, pop_sdf, region_map, baseline_region, target_region
         # plt.hist(bins[:-1], bins, weights = counts)
         # plt.title(f'Cosine Similarity of PCs of {baseline_region} and {target_region}, {orientation}')
         # align_fig.savefig(f'{pca_dir}/CosSim_{orientation}_{base_region}_{target_region}.png', bbox_inches='tight', dpi=200)
-        plt.figure(f_S)
-        plt.scatter(np.arange(1, pc_dims+1), torch.cumsum(target_S, dim=0)[:pc_dims] / target_S.sum(), label=target_region)
+        # plt.figure(f_S)
+        # plt.scatter(np.arange(1, pc_dims+1), torch.cumsum(target_S, dim=0)[:pc_dims] / target_S.sum(), label=target_region)
         target_var_sum = torch.cumsum(torch.diagonal(base_pcs.T@target_cov@base_pcs), dim=0)
-        print(target_var_sum[:pc_dims])
+        # print(target_var_sum[:pc_dims])
         plt.figure(f_var)
         plt.scatter(np.arange(1, pc_dims+1), target_var_sum[:pc_dims]/base_var_trace, label=target_region)
         # plt.scatter(np.arange(1, pc_dims+1), (target_var_sum / base_var_sum)[:pc_dims], label=f'{target_region}/{base_region}')
-        target_window = region_map[target_region]
-        plot_pca = torch.matmul(pop_sdf[target_window[0]:target_window[1]], base_pcs[:, :3])
-        Z = plot_pca[:, 2]
-        ax.scatter(xs=plot_pca[:, 0], ys=plot_pca[:, 1], zs=Z, label=target_region)
-    ax.legend()
+        # target_window = region_map[target_region]
+    #     plot_pca = pop_sdf[target_window[0]:target_window[1]].T@base_pcs[:, :3]
+    #     Z = plot_pca[:, 2]
+    #     ax.scatter(xs=plot_pca[:, 0], ys=plot_pca[:, 1], zs=Z, label=target_region)
+    # ax.legend()
     f_var.legend()
-    f_S.legend()
-    return f_var, f_cov, f_S, f_pcs
+    # f_S.legend()
+    return f_var, f_cov#, f_S#, f_pcs
 
 monkey_name_map = {'R': 'Red', 'G': 'Green'}
 event_map = {'trialRewardDrop': 'Cue', 'trialReachOn':'Reach', 'trialGraspOn':'GraspOn', 'trialEnd':'GraspOff'}
@@ -143,8 +148,8 @@ else:
             merged_population_dict[orientation] = []
         sdf = all_sdf_dict[area]
         sdf = sdf[:,0].T
-        sdf_max = sdf.max()+5*binsize/1000
-        sdf = sdf/sdf_max
+        sdf_max = sdf.max(axis=1)+5*binsize/1000
+        sdf = sdf/np.repeat(np.expand_dims(sdf_max, 1), sdf.shape[1], axis=1)
         merged_population_dict[orientation].append(sdf)
         if region not in region_map.keys():
             region_boundaries = [region_map['idx'], region_map['idx'] + sdf.shape[0]]
@@ -160,7 +165,7 @@ os.environ['KMP_DUPLICATE_LIB_OK']='True'
 sides = ['i', 'c']
 n_plot = 4
 q = 20 # Estimate for number of PCs to use
-pca_regions = ['cM1', 'iM1', 'cPMd', 'iPMd', 'cPMv', 'iPMv']
+pca_regions = ['cPMv', 'iPMv']#, ['cM1', 'iM1'], ['cPMd', 'iPMd']
 # projection_regions = ['PMd', 'PMv']
 full_pca_dict = {}
 for pca_region in pca_regions:
@@ -193,11 +198,11 @@ for pca_region in pca_regions:
 for orientation in merged_population_dict.keys():
     pop_sdf = torch.Tensor(merged_population_dict[orientation]).detach()
     for base_region in pca_regions:
-        fig_var, fig_cov, fig_S, fig_pcs = region_variance(full_pca_dict, pop_sdf, region_map, base_region, pca_regions, orientation, pc_dims=10)
+        fig_var, fig_cov= region_variance(full_pca_dict, pop_sdf, region_map, base_region, pca_regions, orientation, pc_dims=20)
         fig_var.savefig(f'{pca_dir}/varExplained_{orientation}_{base_region}.png', bbox_inches='tight', dpi = 200)
         fig_cov.savefig(f'{pca_dir}/covMat_{orientation}_{base_region}.png', bbox_inches='tight', dpi=200)
-        fig_S.savefig(f'{pca_dir}/sVariance_{orientation}_{base_region}.png', bbox_inches='tight', dpi=200)
-        fig_pcs.savefig(f'{pca_dir}/pcProjections_{orientation}_{base_region}.png', bbox_inches='tight', dpi=200)
+        # fig_S.savefig(f'{pca_dir}/sVariance_{orientation}_{base_region}.png', bbox_inches='tight', dpi=200)
+        # fig_pcs.savefig(f'{pca_dir}/pcProjections_{orientation}_{base_region}.png', bbox_inches='tight', dpi=200)
 
 
 
