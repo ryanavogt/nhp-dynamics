@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt     #Generating plots
 import matplotlib as mpl
 import torch
 from mpl_toolkits.mplot3d.axes3d import get_test_data
-from plot_utils import pc_subplot
+from plot_utils import pc_subplot, epoch_window_map
 
 from sig_proc import *
 
@@ -123,6 +123,28 @@ def orientation_variance(pc_dict, base_orientation, baseline_region, pc_dims=10,
     orient_plot_dict['Variance'] = fig
     return orient_plot_dict
 
+def region_projection(all_sdf, pc_dict, region_map, data_region, pc_region, pc_dims=3, orientation='vertical',
+                      fig = plt.figure(), indices=0, bin_size=5, epoch_windows=epoch_window_map):
+    hemi_map = {'c': 'contralateral', 'i': 'ipsilateral'}
+    base_pca = pc_dict[orientation][pc_region]
+    base_pcs = base_pca['V']
+    data_ind = region_map[data_region]
+    data = all_sdf[data_ind[0]:data_ind[1]]
+    projected = data.T @ base_pcs
+    plt.figure(fig)
+    ax_proj = fig.axes[indices]
+    x_proj = torch.arange(1, data.shape[1]*bin_size, step=bin_size)
+    for pc in range(pc_dims):
+        ax_proj.plot(x_proj, projected[:, pc], label = f'PC {pc+1}')
+    epoch_lines = []
+    for epoch in epoch_windows.keys():
+        epoch_lines.append(epoch_windows[epoch]['time'])
+    ax_proj.vlines(epoch_lines, ymin = projected[:, :pc].min(), ymax = projected[:, :pc].max(), colors='k')
+    ax_proj.set_xticks(epoch_lines, labels=epoch_windows.keys())
+    ax_proj.set_title(f'{orientation.capitalize()}, {hemi_map[pc_region[0]]}')
+    plot_dict = {'Projection': fig}
+    return plot_dict
+
 
 monkey_name_map = {'R': 'Red', 'G': 'Green'}
 event_map = {'trialRewardDrop': 'Cue', 'trialReachOn':'Reach', 'trialGraspOn':'GraspOn', 'trialEnd':'GraspOff'}
@@ -192,7 +214,6 @@ sides = ['i', 'c']
 n_plot = 4
 q = 20 # Estimate for number of PCs to use
 pca_regions = ['cM1', 'iM1','cPMv', 'iPMv','cPMd', 'iPMd']
-# projection_regions = ['PMd', 'PMv']
 full_pca_dict = {}
 all_area_plots = {}
 for pca_region in pca_regions:
@@ -244,6 +265,9 @@ for pca_region in pca_regions:
 pc_plot_dims = 10
 var_plot_dict = {'M1':plt.subplots(2,2), 'PMd':plt.subplots(2,2), 'PMv': plt.subplots(2,2)}
 orient_plot_dict = {'M1':plt.subplots(2,2), 'PMd':plt.subplots(2,2), 'PMv': plt.subplots(2,2)}
+proj_plot_dict = {'M1':plt.subplots(2,2), 'PMd':plt.subplots(2,2), 'PMv': plt.subplots(2,2)}
+projection_dims = 3
+
 for orientation in merged_population_dict.keys():
     orient_idx = orientation == 'vertical'
     pop_sdf = torch.Tensor(merged_population_dict[orientation]).detach()
@@ -256,8 +280,12 @@ for orientation in merged_population_dict.keys():
         orient_dict = orientation_variance(full_pca_dict, orientation, base_region,
                                                 pc_dims=pc_plot_dims, fig=orient_plot_dict[region][0],
                                        indices=orient_idx + 2 * hemi_idx)
+        projection_dict = region_projection(pop_sdf, full_pca_dict, region_map, data_region=base_region,
+                                                 pc_region=base_region, orientation=orientation, bin_size = binsize,
+                                                 indices=orient_idx+2*hemi_idx, fig=proj_plot_dict[region][0])
         var_plot_dict[region] = hemi_plot_dict['Variance'], hemi_plot_dict['Variance'].axes
         orient_plot_dict[region] = orient_dict['Variance'], orient_dict['Variance'].axes
+        proj_plot_dict[region] = projection_dict['Projection'], projection_dict['Projection'].axes
 
 for region in var_plot_dict.keys():
     fig_var, var_axes = var_plot_dict[region]
@@ -279,6 +307,16 @@ for region in var_plot_dict.keys():
     sns.despine(fig=fig_orient)
     print('Orientation Plot')
     fig_orient.savefig(f'{pca_dir}/varExplainedOrientation_{region}.png', bbox_inches='tight', dpi=200)
+
+    fig_proj, proj_axes = proj_plot_dict[region]
+    handles, labels = proj_axes[0].get_legend_handles_labels()
+    fig_proj.legend(handles, labels, ncols=3, loc='lower center')
+    fig_proj.set_size_inches(12, 7)
+    fig_proj.text(0.5, 0.06, 'Time (ms)', ha='center')
+    fig_proj.suptitle(f'{region} Data Projected Onto\nFirst {projection_dims} PCs')
+    sns.despine(fig=fig_proj)
+    # print('Orientation Plot')
+    fig_proj.savefig(f'{pca_dir}/projectionPC_{region}.png', bbox_inches='tight', dpi=200)
 
 #     rows = int(len(region_map.keys())/2)
 #     plot_signals = 1

@@ -70,7 +70,7 @@ else:
                 population_dict[orientation][epoch] = []
             population_dict[orientation][epoch].append(sdf)
             if region not in region_map.keys():
-                region_boundaries = [region_map['idx'], region_map['idx'] + sdf.shape[0]]
+                region_boundaries  = [region_map['idx'], region_map['idx'] + sdf.shape[0]]
                 region_map[region] = region_boundaries
                 region_map['idx'] += sdf.shape[0]
 

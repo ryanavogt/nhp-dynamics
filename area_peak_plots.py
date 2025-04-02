@@ -42,8 +42,8 @@ if not os.path.exists(summary_dir):
 lat_map = {'c':'contralateral', 'i':'ipsilateral'}
 hand_list = ['R', 'L']
 events = ['trialRewardDrop', 'trialReachOn', 'trialGraspOn', 'trialGraspOff']
-binsize = 5
-kernel_width = 25
+binsize = 10
+kernel_width = 200
 load_override_preprocess = True
 load_override = True
 
