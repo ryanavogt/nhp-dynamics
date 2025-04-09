@@ -35,20 +35,6 @@ def region_pca(region_map, pop_sdf, region_name):
 
 def hemi_variance(pc_dict, region_map, baseline_region, target_regions, orientation='vertical', pc_dims=10,
                   all_regions=False, plot_cov = False, fig = plt.figure(), indices=0):
-    """
-
-    :param pc_dict:
-    :param region_map:
-    :param baseline_region:
-    :param target_regions:
-    :param orientation:
-    :param pc_dims:
-    :param all_regions:
-    :param plot_cov:
-    :param fig:
-    :param indices:
-    :return:
-    """
     #First, define relevant variables from parameters
     var_plot_dict = {}
     hemi_color = {'c': 'b', 'i': 'r'}
@@ -56,6 +42,8 @@ def hemi_variance(pc_dict, region_map, baseline_region, target_regions, orientat
     base_hemi, base_area = baseline_region[0], baseline_region[1:]
     base_pca = pc_dict[orientation][baseline_region]
     base_cov = base_pca['cov']
+    if pc_dims == 'all':
+        pc_dims = base_cov.shape[0]
     base_pcs = base_pca['V']
     base_var_sum = torch.cumsum(torch.diagonal(base_pcs.T@base_cov@base_pcs), dim=0)
     base_var_trace = base_var_sum.max()
@@ -79,9 +67,9 @@ def hemi_variance(pc_dict, region_map, baseline_region, target_regions, orientat
         target_pca = pc_dict[orientation][target_region]
         target_cov = target_pca['cov']
         target_var_sum = torch.cumsum(torch.diagonal(base_pcs.T@target_cov@base_pcs), dim=0)
-        ax_var.scatter(np.arange(1, pc_dims+1), target_var_sum[:pc_dims]/base_var_trace,
+        ax_var.scatter(np.arange(1, pc_dims+1), target_var_sum[:pc_dims]/target_var_sum.max(),
                        label=hemi_map[target_hemi], c=hemi_color[target_hemi])
-    ax_var.set_ylim([0, 1])
+    ax_var.set_ylim([0, 1.03])
     ax_var.set_title(f'{orientation.capitalize()}, {hemi_map[base_hemi].capitalize()} PCs')
     if indices % 2 == 0:
         ax_var.set_ylabel('Variance Explained')
@@ -102,6 +90,8 @@ def orientation_variance(pc_dict, base_orientation, baseline_region, pc_dims=10,
     base_hemi, base_area = baseline_region[0], baseline_region[1:]
     base_pca = pc_dict[base_orientation][baseline_region]
     base_cov = base_pca['cov']
+    if pc_dims == 'all':
+        pc_dims = base_cov.shape[0]
     base_pcs = base_pca['V']
     base_var_sum = torch.cumsum(torch.diagonal(base_pcs.T@base_cov@base_pcs), dim=0)
     base_var_trace = base_var_sum.max()
@@ -113,9 +103,9 @@ def orientation_variance(pc_dict, base_orientation, baseline_region, pc_dims=10,
     target_pca = pc_dict[target_orientation][baseline_region]
     target_cov = target_pca['cov']
     target_var_sum = torch.cumsum(torch.diagonal(base_pcs.T@target_cov@base_pcs), dim=0)
-    ax_var.scatter(np.arange(1, pc_dims+1), target_var_sum[:pc_dims]/base_var_trace,
+    ax_var.scatter(np.arange(1, pc_dims+1), target_var_sum[:pc_dims]/target_var_sum.max(),
                    label=target_orientation, c=orient_color[target_orientation])
-    ax_var.set_ylim([0, 1])
+    ax_var.set_ylim([0, 1.03])
     ax_var.set_title(f'{hemi_map[base_hemi].capitalize()}, {orientation.capitalize()} PCs')
     if indices % 2 == 0:
         ax_var.set_ylabel('Variance Explained')
@@ -146,6 +136,7 @@ def region_projection(all_sdf, pc_dict, region_map, data_region, pc_region, pc_d
     return plot_dict
 
 
+
 monkey_name_map = {'R': 'Red', 'G': 'Green'}
 event_map = {'trialRewardDrop': 'Cue', 'trialReachOn':'Reach', 'trialGraspOn':'GraspOn', 'trialEnd':'GraspOff'}
 # Define the reference events and time window defining each epoch
@@ -172,7 +163,6 @@ full_window = np.arange(-1000, 1000+binsize, binsize)
 new_popdict = True
 pca_dir = f'{summary_dir}/PCA_b{binsize}_k{kernel_width}'
 
-pca_dir = f'{summary_dir}/PCA_b{binsize}_k{kernel_width}'
 if not os.path.exists(pca_dir):
     os.mkdir(pca_dir)
 
@@ -181,6 +171,7 @@ with open(all_sdf_filename, 'rb') as sdf_file:
     all_sdf_dict = pkl.load(sdf_file)
 
 pop_filename = f'{pca_dir}/pop_dict_merged_b{binsize}_k{kernel_width}.p'
+merged_pop_dict = {'sdf':[], 'idx':0}
 if os.path.exists(pop_filename) and not new_popdict:
     with open(pop_filename, 'rb') as pop_file:
         pop_tuple = pkl.load(pop_file)
@@ -189,33 +180,103 @@ if os.path.exists(pop_filename) and not new_popdict:
 else:
     merged_population_dict = {}
     region_map = {'idx':0}
+    condition_map  = {}
+    cortex_map = {'idx':0}
     for area in all_sdf_dict.keys():
         region, orientation = area.split('_')
         side, cortex = region[0], region[1:]
         if orientation not in merged_population_dict.keys():
             merged_population_dict[orientation] = []
+        if cortex not in condition_map.keys():
+            condition_map[cortex] = {'idx':0}
         sdf = all_sdf_dict[area]
         sdf = sdf[:,0].T
         sdf_max = sdf.max(axis=1)+5*binsize/1000
         sdf = sdf/np.repeat(np.expand_dims(sdf_max, 1), sdf.shape[1], axis=1)
         merged_population_dict[orientation].append(sdf)
+        if cortex not in cortex_map.keys():
+            cortex_map[cortex] = [cortex_map['idx'], cortex_map['idx']]
+        cortex_map[cortex][1]+= sdf.shape[0]
+        cortex_map['idx'] += sdf.shape[0]
         if region not in region_map.keys():
             region_boundaries = [region_map['idx'], region_map['idx'] + sdf.shape[0]]
             region_map[region] = region_boundaries
             region_map['idx'] += sdf.shape[0]
+        or_key = f'{side}_{orientation}'
+        if or_key not in condition_map[cortex].keys():
+            region_boundaries = [condition_map[cortex]['idx'], condition_map[cortex]['idx'] + sdf.shape[0]]
+            condition_map[cortex][or_key] = region_boundaries
+            condition_map[cortex]['idx'] += sdf.shape[0]
+        merged_pop_dict['sdf'].append(sdf)
     for orientation, sdf_list in merged_population_dict.items():
         merged_population_dict[orientation] = np.vstack(sdf_list)
     del region_map['idx']
+    for cor in condition_map.keys():
+        del condition_map[cor]['idx']
+    del cortex_map['idx']
+    merged_pop_sdf = torch.Tensor(np.vstack(merged_pop_dict['sdf']))
 
+pca_overwrite = True
+for cortex in cortex_map.keys():
+    pca_filename = f'{pca_dir}/PCA_{cortex}_b{binsize}_k{kernel_width}.p'
+    if os.path.exists(pca_filename) and not pca_overwrite:
+        with open(pca_filename, 'rb') as pca_file:
+            cortex_pca_vals = pkl.load(pca_file)
+        new_pca = False
+    else:
+        new_pca = True
+    if new_pca:
+        cort = cortex_map[cortex]
+        sdf = merged_pop_sdf[cort[0]:cort[1]]
+        cov = torch.cov(sdf)
+        sdf_mean = sdf.mean(dim=1, keepdim=True)
+        sdf_centered = sdf - sdf_mean.repeat(1, merged_pop_sdf.shape[1])
+        sdf_square = sdf_centered @ sdf_centered.T
+        U, S, V = torch.linalg.svd(sdf_square, full_matrices=False)
+        cortex_pca_vals = {'U': U, 'S': S, 'V': V, 'cov': cov, 'sdf':sdf_centered}
+        with open(pca_filename, 'wb') as pca_file:
+            pkl.dump(cortex_pca_vals, pca_file)
+    else:
+        U, S, V, cov = cortex_pca_vals['U'], cortex_pca_vals['S'], cortex_pca_vals['V'], cortex_pca_vals['cov']
+    fig = plt.figure(cortex, figsize=(10.5,10))
+    ax2 = fig.add_subplot(2,2,2)
+    ax2a = fig.add_subplot(2, 2,4)
+    ax3 = fig.add_subplot(2,2,1, projection='3d')
+    ax_var = fig.add_subplot(2,2,3)
+    for cond, c_ind in condition_map[cortex].items():
+        cond_sdf = cortex_pca_vals['sdf'][c_ind[0]:c_ind[1]]
+        cond_proj = cond_sdf.T@V[c_ind[0]:c_ind[1]]
+        x, y, z  = cond_proj[:, :3].T
+        ax3.plot(x, y, z, label = cond)
+        ax2.plot(x, y, label=cond)
+        ax2a.plot(y, z, label=cond)
+    var = S.square()
+    var_sum = torch.cumsum(var, 0)
+    ax_var.scatter(range(1, 11), var_sum[:10]/var_sum[-1])
+    ax_var.set_xlabel('PC index')
+    ax_var.set_ylabel('Variance Explained')
+    ax_var.set_ylim([0, 1.05])
 
-pca_overwrite = False
+    ax2.set_title(f'Conditions plotted onto first 2 {cortex} PCs')
+    ax2a.set_title(f'Conditions plotted onto second 2 {cortex} PCs')
+    ax3.set_title(f'Conditions plotted onto first 3 {cortex} PCs')
+    ax3.set_xlabel('PC 1')
+    ax3.set_ylabel('PC 2')
+    ax3.set_xlabel('PC 1')
+    ax2.set_xlabel('PC 1')
+    ax2.set_ylabel('PC 2')
+    ax2a.set_xlabel('PC 2')
+    ax2a.set_ylabel('PC 3')
+    ax2.legend()
+    fig.savefig(f'{pca_dir}/PCTraj3D_{cortex}.png', dpi = 300, bbox_inches= 'tight')
+
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
 sides = ['i', 'c']
 n_plot = 4
-q = 20 # Estimate for number of PCs to use
 pca_regions = ['cM1', 'iM1','cPMv', 'iPMv','cPMd', 'iPMd']
 full_pca_dict = {}
 all_area_plots = {}
+
 for pca_region in pca_regions:
     hemisphere, region = pca_region[0], pca_region[1:]
     f = plt.figure(region, figsize = (15, 6))
@@ -243,20 +304,20 @@ for pca_region in pca_regions:
             pca_vals = pca_dict[orientation]
             U, S, V, cov = pca_vals['U'], pca_vals['S'], pca_vals['V'], pca_vals['cov']
         full_pca_dict[orientation][pca_region] = pca_dict[orientation]
-        bottoms = np.zeros(V.shape[0])
-        for pc in range(3):
-            ax.bar(np.arange(V.shape[0]), V[:, pc].abs(), bottom = bottoms, label = f'PC{pc+1}')
-            bottoms = V[:, pc].abs() + bottoms
-        if region == 'PMv':
-            print(f'{region} sum: {bottoms.sum()}')
-        ax.set_title(f'{pca_region}, {orientation.capitalize()}')
-        ax.set_xlabel('Neuron No.')
-        ax.set_ylabel('PC Value')
-
-    handles, labels = ax.get_legend_handles_labels()
-    f.suptitle(f'Neuron Map onto First PCs for {region}')
-    f.legend(handles, labels, ncols=2)
-    f.savefig(f'{pca_dir}/NeuronPCMap_{region}.png', dpi = 300)
+    #     bottoms = np.zeros(V.shape[0])
+    #     for pc in range(3):
+    #         ax.bar(np.arange(V.shape[0]), V[:, pc].abs(), bottom = bottoms, label = f'PC{pc+1}')
+    #         bottoms = V[:, pc].abs() + bottoms
+    #     if region == 'PMv':
+    #         print(f'{region} sum: {bottoms.sum()}')
+    #     ax.set_title(f'{pca_region}, {orientation.capitalize()}')
+    #     ax.set_xlabel('Neuron No.')
+    #     ax.set_ylabel('PC Value')
+    #
+    # handles, labels = ax.get_legend_handles_labels()
+    # f.suptitle(f'Neuron Map onto First PCs for {region}')
+    # f.legend(handles, labels, ncols=2)
+    # f.savefig(f'{pca_dir}/NeuronPCMap_{region}.png', dpi = 300)
     if new_pca:
         with open(pca_filename, 'wb') as pca_file:
             pkl.dump(pca_dict, pca_file)
@@ -296,7 +357,7 @@ for region in var_plot_dict.keys():
     fig_var.suptitle(f'Variance Explained by First {pc_plot_dims} PCs of {region}\nAcross Hemisphere')
     sns.despine(fig=fig_var)
     print('Hemi Plot')
-    fig_var.savefig(f'{pca_dir}/varExplained_{region}.png', bbox_inches='tight', dpi = 200)
+    fig_var.savefig(f'{pca_dir}/varExplained_{region}_{pc_plot_dims}PCs.png', bbox_inches='tight', dpi = 200)
 
     fig_orient, orient_axes = orient_plot_dict[region]
     handles, labels = orient_axes[0].get_legend_handles_labels()
@@ -306,7 +367,7 @@ for region in var_plot_dict.keys():
     fig_orient.suptitle(f'Variance Explained by First {pc_plot_dims} PCs of {region}\nAcross Orientation')
     sns.despine(fig=fig_orient)
     print('Orientation Plot')
-    fig_orient.savefig(f'{pca_dir}/varExplainedOrientation_{region}.png', bbox_inches='tight', dpi=200)
+    fig_orient.savefig(f'{pca_dir}/varExplainedOrientation_{region}_{pc_plot_dims}PCs.png', bbox_inches='tight', dpi=200)
 
     fig_proj, proj_axes = proj_plot_dict[region]
     handles, labels = proj_axes[0].get_legend_handles_labels()
