@@ -4,8 +4,11 @@ import os                           #Directory Creation and Verification (built-
 # The following packages need to be installed in your virtual environment (using conda or pip)
 import matplotlib.pyplot as plt     #Generating plots
 import matplotlib as mpl
+from matplotlib.lines import Line2D
 import torch
 from mpl_toolkits.mplot3d.axes3d import get_test_data
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+import matplotlib.colors as colors
 from plot_utils import pc_subplot, epoch_window_map
 
 from sig_proc import *
@@ -14,9 +17,14 @@ import seaborn as sns
 sns.set_theme()
 sns.set_style(style='white')
 
+def center_sdf(sdf):
+    mean = sdf.mean(dim=1, keepdim=True)
+    centered = sdf - mean.repeat(1, sdf.shape[1])
+    square = centered @ centered.T
+    return {'square':square, 'centered':centered}
 
 def region_pca(region_map, pop_sdf, region_name):
-    print('Computing PCA')
+    # print('Computing PCA')
     pca_sdf = []
     for key in region_map.keys():
         if region_name in key:
@@ -25,9 +33,7 @@ def region_pca(region_map, pop_sdf, region_name):
     pca_sdf = torch.vstack(pca_sdf)
     # U, S, V = torch.pca_lowrank(pca_sdf, center=True, q=q)
     cov = torch.cov(pca_sdf)
-    sdf_mean = pca_sdf.mean(dim=1, keepdim=True)
-    sdf_centered = pca_sdf - sdf_mean.repeat(1, pca_sdf.shape[1])
-    sdf_square = sdf_centered@sdf_centered.T
+    sdf_square = center_sdf(pca_sdf)['square']
     # U, S, V = torch.linalg.svd(cov, full_matrices = False)
     U, S, V = torch.linalg.svd(sdf_square, full_matrices=False)
 
@@ -192,6 +198,7 @@ else:
         sdf = all_sdf_dict[area]
         sdf = sdf[:,0].T
         sdf_max = sdf.max(axis=1)+5*binsize/1000
+        # zero_mask = sdf.max(axis=1) > 0
         sdf = sdf/np.repeat(np.expand_dims(sdf_max, 1), sdf.shape[1], axis=1)
         merged_population_dict[orientation].append(sdf)
         if cortex not in cortex_map.keys():
@@ -215,60 +222,168 @@ else:
         del condition_map[cor]['idx']
     del cortex_map['idx']
     merged_pop_sdf = torch.Tensor(np.vstack(merged_pop_dict['sdf']))
+    pop_sdf_dict = center_sdf(merged_pop_sdf)
+    U, S, Vh = torch.linalg.svd(pop_sdf_dict['square'], full_matrices=False)
+    V = Vh.T
+    pop_pca_vals = {'U': U, 'S': S, 'V': V, 'sdf': pop_sdf_dict['centered']}
+    pop_pca_filename = f'{summary_dir}/merged_sdfPCA_bin{binsize}_k{kernel_width}.p'
+    with open(pop_pca_filename, 'wb') as pop_file:
+        pkl.dump(pop_pca_vals, pop_file)
+
 
 pca_overwrite = True
+n_angles = 5
+# fig_pop_pca, axs = plt.subplots(1, 2, subplot_kw=dict(projection= '3d'))
+fig_pop_pca = plt.figure(figsize = (11, 8))
+pop_ax_idx = 0
+ax = fig_pop_pca.add_subplot(1, 2, 1, projection= '3d')
+ax.set_title(f'Mean Trajectory by Region')
+full_angles = {}
+n_cort = len(cortex_map.keys())-1
+cortex_colors = {'M1':'b', 'PMd':'r', 'PMv':'g'}
+epoch_shapes = {'Cue': 'o', 'Reach': 's', 'Grasp On': '^', 'Grasp Off': 'v'}
+legend_elements = [Line2D([0], [0], color='w', marker=epoch_shapes[e], markerfacecolor='k', label=epoch) for e in epoch_shapes.keys()]
+region_var_explained = {}
 for cortex in cortex_map.keys():
     pca_filename = f'{pca_dir}/PCA_{cortex}_b{binsize}_k{kernel_width}.p'
-    if os.path.exists(pca_filename) and not pca_overwrite:
-        with open(pca_filename, 'rb') as pca_file:
-            cortex_pca_vals = pkl.load(pca_file)
-        new_pca = False
-    else:
-        new_pca = True
-    if new_pca:
-        cort = cortex_map[cortex]
-        sdf = merged_pop_sdf[cort[0]:cort[1]]
-        cov = torch.cov(sdf)
-        sdf_mean = sdf.mean(dim=1, keepdim=True)
-        sdf_centered = sdf - sdf_mean.repeat(1, merged_pop_sdf.shape[1])
-        sdf_square = sdf_centered @ sdf_centered.T
-        U, S, V = torch.linalg.svd(sdf_square, full_matrices=False)
-        cortex_pca_vals = {'U': U, 'S': S, 'V': V, 'cov': cov, 'sdf':sdf_centered}
-        with open(pca_filename, 'wb') as pca_file:
-            pkl.dump(cortex_pca_vals, pca_file)
-    else:
-        U, S, V, cov = cortex_pca_vals['U'], cortex_pca_vals['S'], cortex_pca_vals['V'], cortex_pca_vals['cov']
-    fig = plt.figure(cortex, figsize=(10.5,10))
-    ax2 = fig.add_subplot(2,2,2)
-    ax2a = fig.add_subplot(2, 2,4)
-    ax3 = fig.add_subplot(2,2,1, projection='3d')
+    cort = cortex_map[cortex]
+    sdf = merged_pop_sdf[cort[0]:cort[1]]
+    cov = torch.cov(sdf)
+    dict_sdf = center_sdf(sdf)
+    U, S, Vh = torch.linalg.svd(dict_sdf['square'], full_matrices=False)
+    V = Vh.T
+    cortex_pca_vals = {'U': U, 'S': S, 'V': V, 'cov': cov, 'sdf':dict_sdf['centered']}
+    with open(pca_filename, 'wb') as pca_file:
+        pkl.dump(cortex_pca_vals, pca_file)
+
+    pop_V = pop_pca_vals['V']
+    full_proj = dict_sdf['centered'].T@pop_V[cort[0]:cort[1]]
+    reg_var_sum = torch.cumsum(torch.diagonal(pop_V[cort[0]:cort[1]].T@cortex_pca_vals['cov']@pop_V[cort[0]:cort[1]]), dim=0)
+    region_var_explained[cortex] = reg_var_sum/reg_var_sum.max()
+    x, y, z = full_proj[:, :3].T
+    ax.plot(x, y, z, label = cortex)
+    for epoch in epoch_window_map:
+        epoch_time = epoch_window_map[epoch]['time']
+        epoch_idx = epoch_time//binsize
+        ax.scatter(x[epoch_idx], y[epoch_idx], z[epoch_idx], marker = epoch_shapes[epoch], c='k')
+
+    angles = {}
+    for o_cortex in full_angles:
+        # print(o_cortex)
+        angles[o_cortex] = cos(full_proj[:, :n_angles], full_angles[o_cortex]['v'])
+    full_angles[cortex] = {'v': full_proj[:, :n_angles], 'angles': angles}
+
+    fig = plt.figure(cortex, figsize=(7,10))
+    ax2 = fig.add_subplot(2,2,1)
+    ax2a = fig.add_subplot(2,2,4)
+    ax3 = fig.add_subplot(2,2,2, projection='3d')
     ax_var = fig.add_subplot(2,2,3)
+    cortex_angles = {}
+    cos = torch.nn.CosineSimilarity(dim=0, eps=1e-8)
     for cond, c_ind in condition_map[cortex].items():
         cond_sdf = cortex_pca_vals['sdf'][c_ind[0]:c_ind[1]]
+        cond_cov = cortex_pca_vals['cov'][c_ind[0]:c_ind[1], c_ind[0]:c_ind[1]]
+        cond_var_sum = torch.cumsum(torch.diagonal(V[c_ind[0]:c_ind[1]].T@cond_cov@V[c_ind[0]:c_ind[1]]), dim=0)
+        cond_var_explained = cond_var_sum/cond_var_sum.max()
+        ax_var.scatter(np.arange(1, 10 + 1), cond_var_explained[:10], label=region)
         cond_proj = cond_sdf.T@V[c_ind[0]:c_ind[1]]
         x, y, z  = cond_proj[:, :3].T
         ax3.plot(x, y, z, label = cond)
         ax2.plot(x, y, label=cond)
-        ax2a.plot(y, z, label=cond)
+        for epoch in epoch_window_map:
+            epoch_time = epoch_window_map[epoch]['time']
+            epoch_idx = epoch_time // binsize
+            ax3.scatter(x[epoch_idx], y[epoch_idx], z[epoch_idx], marker=epoch_shapes[epoch], c='k')
+            ax2.scatter(x[epoch_idx], y[epoch_idx], marker=epoch_shapes[epoch], c='k')
+        # ax2a.plot(y, z, label=cond)
+        angles = {}
+        for o_condition in cortex_angles:
+            # print(o_condition)
+            angles[o_condition] = cos(cond_proj[:, :n_angles], cortex_angles[o_condition]['v'])
+        cortex_angles[cond] = {'v': cond_proj[:, :n_angles], 'angles':angles}
+    leg2 = ax3.legend(handles=legend_elements, labels=epoch_shapes.keys(), ncols=2, loc = 'lower center')
+    sns.move_legend(ax3, 'upper center', ncols=2, bbox_to_anchor=(.5, -.1))
+    conds = len(cortex_angles.keys())-1
+    angle_matrix = torch.empty(conds, conds*n_angles)
+    for c_i, cond in enumerate(cortex_angles.keys()):
+        if c_i == 0:
+            continue
+        for c_j, o_cond in enumerate(cortex_angles[cond]['angles'].keys()):
+            angle_matrix[c_i-1, c_j*n_angles:(c_j+1)*n_angles] = cortex_angles[cond]['angles'][o_cond]
+            # print(angle_matrix)
+    # angle_fig = plt.figure()
+    im = ax2a.pcolor(angle_matrix, cmap = mpl.colormaps['magma_r'], norm = colors.Normalize(vmin=0.4, vmax=1, clip=True)) #norm=colors.LogNorm(vmin=0.4, vmax = 1)
+    div = make_axes_locatable(ax2a)
+    cax = div.append_axes('right', size='5%', pad = 0.05)
+    fig.colorbar(im, cax=cax, orientation='vertical')
+    ax2a.set_yticks(ticks = [0.5,1.5,2.5], labels = ['ch', 'iv', 'cv'])
+    ax2a.set_xticks(ticks = [n_angles/2, 3*n_angles/2, 5*n_angles/2], labels = ['ih', 'ch', 'iv'])
+    ax2a.vlines([n_angles, 2*n_angles], 0, 3, colors = 'w')
+    ax2a.hlines([1,2], 0, conds*n_angles, colors = 'w')
+    # ax2a.colorbar(label='Cos Sim.')
+    ax2a.set_title(f'Principal Angles Between First {n_angles} PCs')
+    # plt.savefig(f'{pca_dir}/AngleMatrix_{cortex}.png', dpi = 300, bbox_inches= 'tight')
+
     var = S.square()
     var_sum = torch.cumsum(var, 0)
-    ax_var.scatter(range(1, 11), var_sum[:10]/var_sum[-1])
+    ax_var.scatter(range(1, 11), var_sum[:10]/var_sum[-1], label= 'All', color='k')
     ax_var.set_xlabel('PC index')
     ax_var.set_ylabel('Variance Explained')
     ax_var.set_ylim([0, 1.05])
+    ax_var.legend(ncol=2, loc='right')
 
     ax2.set_title(f'Conditions plotted onto first 2 {cortex} PCs')
-    ax2a.set_title(f'Conditions plotted onto second 2 {cortex} PCs')
+    # ax2a.set_title(f'Conditions plotted onto second 2 {cortex} PCs')
     ax3.set_title(f'Conditions plotted onto first 3 {cortex} PCs')
     ax3.set_xlabel('PC 1')
     ax3.set_ylabel('PC 2')
     ax3.set_xlabel('PC 1')
     ax2.set_xlabel('PC 1')
     ax2.set_ylabel('PC 2')
-    ax2a.set_xlabel('PC 2')
-    ax2a.set_ylabel('PC 3')
+    # ax2a.set_xlabel('PC 2')
+    # ax2a.set_ylabel('PC 3')
     ax2.legend()
     fig.savefig(f'{pca_dir}/PCTraj3D_{cortex}.png', dpi = 300, bbox_inches= 'tight')
+
+full_angle_matrix = torch.empty(n_cort, n_cort*n_angles)
+for c_i, cort in enumerate(full_angles.keys()):
+    if c_i == 0:
+        continue
+    for c_j, o_cort in enumerate(full_angles[cort]['angles'].keys()):
+        print(o_cort)
+        full_angle_matrix[c_i-1, c_j*n_angles:(c_j+1)*n_angles] = full_angles[cort]['angles'][o_cort]
+ax_angles = fig_pop_pca.add_subplot(2, 2, 2)
+im = ax_angles.pcolor(full_angle_matrix, cmap = mpl.colormaps['magma_r'], norm = colors.Normalize(vmin=0.4, vmax=1, clip=True)) #norm=colors.LogNorm(vmin=0.4, vmax = 1)
+div = make_axes_locatable(ax_angles)
+ax_angles.vlines([n_angles], 0, n_cort, colors = 'w')
+ax_angles.hlines([1], 0, n_cort*n_angles, colors = 'w')
+cax = div.append_axes('right', size='5%', pad = 0.05)
+fig.colorbar(im, cax=cax, orientation='vertical')
+ax_angles.set_yticks(ticks = [0.5,1.5], labels = ['PMd', 'PMv'])
+ax_angles.set_xticks(ticks = [n_angles/2, 3*n_angles/2], labels = ['M1', 'PMd'])
+ax_angles.set_title(f'Top {n_angles} Principal Angles by Region')
+
+ax_pop_var = fig_pop_pca.add_subplot(2,2,4)
+num_pop_pcs = 50 #pop_V.shape[1]
+pop_S = pop_pca_vals['S']
+pop_var = pop_S.square()
+pop_var_sum = torch.cumsum(pop_var, 0)
+ax_pop_var.scatter(range(1, num_pop_pcs+1), pop_var_sum[:num_pop_pcs]/pop_var_sum[-1], label='All', c='k')
+for region in region_var_explained.keys():
+    ax_pop_var.scatter(np.arange(1, num_pop_pcs+1), region_var_explained[region][:num_pop_pcs], label = region)
+ax_pop_var.set_xlabel('PC index')
+ax_pop_var.set_ylabel('Variance Explained')
+ax_pop_var.set_ylim([0, 1.05])
+ax_pop_var.set_title('Variance Explained by PC')
+ax_pop_var.legend(ncol=2, loc='lower right')
+leg1 = ax.legend()
+leg2 = ax.legend(handles = legend_elements, labels = epoch_shapes.keys(), loc='upper center',
+                 bbox_to_anchor=(.5, -.1), ncols=2)
+# sns.move_legend(ax, 'upper center', ncols=2, bbox_to_anchor=(.5, -.1))
+ax.add_artist(leg1)
+fig_pop_pca.suptitle(f'Merged PCA Across All Regions')
+fig_pop_pca.savefig(f'{pca_dir}/PCTraj3D_ALL.png', dpi = 300, bbox_inches= 'tight')
+
 
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
 sides = ['i', 'c']
@@ -323,7 +438,7 @@ for pca_region in pca_regions:
             pkl.dump(pca_dict, pca_file)
 
 # base_region = 'cM1'
-pc_plot_dims = 10
+pc_plot_dims = 'all'
 var_plot_dict = {'M1':plt.subplots(2,2), 'PMd':plt.subplots(2,2), 'PMv': plt.subplots(2,2)}
 orient_plot_dict = {'M1':plt.subplots(2,2), 'PMd':plt.subplots(2,2), 'PMv': plt.subplots(2,2)}
 proj_plot_dict = {'M1':plt.subplots(2,2), 'PMd':plt.subplots(2,2), 'PMv': plt.subplots(2,2)}
