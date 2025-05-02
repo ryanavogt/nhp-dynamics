@@ -141,7 +141,41 @@ def region_projection(all_sdf, pc_dict, region_map, data_region, pc_region, pc_d
     plot_dict = {'Projection': fig}
     return plot_dict
 
-
+def cond_neuron_plot(neuron_dict, epoch_window_map, plot_neurons = 4, fig_size = (12, 16), legend_elements=[],
+                     cond_shapes = {'c_vertical': '+', 'c_horizontal': 'x', 'i_vertical': '|', 'i_horizontal': '.'}):
+    prop_cycle = plt.rcParams['axes.prop_cycle']
+    clr_list = prop_cycle.by_key()['color']
+    n_rows = len(neuron_dict.keys())
+    cond_fig, cond_axs = plt.subplots(nrows= n_rows, ncols=1, figsize=fig_size)
+    for cond_idx, condition in enumerate(neuron_dict.keys()):
+        condition_sdf = neuron_dict[condition]['sdf']
+        condition_ax = cond_axs[cond_idx]
+        for o_condition in neuron_dict.keys():
+            if o_condition == condition:
+                continue
+            o_cond_idx = neuron_dict[o_condition]['indices']
+            for o_idx in range(3):
+                color = 'gray'
+                condition_ax.plot(torch.arange(1, cond_sdf.shape[1] * binsize + 1, binsize),
+                            condition_sdf[o_cond_idx[:plot_neurons, o_idx]].T,
+                                  marker=cond_shapes[o_condition], markerfacecolor='gray', markevery= 5,
+                                   ms = 10, label=f'PC {o_idx + 1}', alpha =0.6,
+                                   color=color, linestyle=(0, (5, max(1, 5*o_idx))))
+        for pc_idx in range(3):
+            color=clr_list[pc_idx]
+            condition_ax.plot(torch.arange(1, cond_sdf.shape[1] * binsize + 1, binsize),
+                                        condition_sdf[neuron_dict[condition]['indices'][:plot_neurons, pc_idx]].T,
+                                        color=color, linewidth = 2, linestyle=(0, (5, max(0, 2*pc_idx*0))))
+            if cond_idx == 0:
+                legend_elements.append(Line2D([0], [0], color=color, linestyle=(0, (5, max(1, 3*pc_idx))),
+                                              label=f'PC {pc_idx+1}'))
+        condition_ax.set_title(f'{condition}')
+        times = [epoch_window_map[epoch]['time'] for epoch in epoch_window_map.keys()]
+        condition_ax.vlines([epoch_window_map[epoch]['time'] for epoch in epoch_window_map.keys()],
+                      cond_sdf.min() * 1.1, cond_sdf.max() * 1.1, color='k')
+        condition_ax.set_xticks(times, labels = [epoch for epoch in epoch_window_map.keys()])
+    leg = cond_axs[0].legend(handles=legend_elements, loc='lower center', bbox_to_anchor=(.5, 1.1), ncols = 4)
+    return cond_fig
 
 monkey_name_map = {'R': 'Red', 'G': 'Green'}
 event_map = {'trialRewardDrop': 'Cue', 'trialReachOn':'Reach', 'trialGraspOn':'GraspOn', 'trialEnd':'GraspOff'}
@@ -243,6 +277,7 @@ n_cort = len(cortex_map.keys())-1
 cortex_colors = {'M1':'b', 'PMd':'r', 'PMv':'g'}
 epoch_shapes = {'Cue': 'o', 'Reach': 's', 'Grasp On': '^', 'Grasp Off': 'v'}
 legend_elements = [Line2D([0], [0], color='w', marker=epoch_shapes[e], markerfacecolor='k', label=epoch) for e in epoch_shapes.keys()]
+cond_shapes = {'c_vertical': "+", 'c_horizontal': "x", 'i_vertical': "1", 'i_horizontal': "."}
 region_var_explained = {}
 for cortex in cortex_map.keys():
     pca_filename = f'{pca_dir}/PCA_{cortex}_b{binsize}_k{kernel_width}.p'
@@ -280,12 +315,31 @@ for cortex in cortex_map.keys():
     ax_var = fig.add_subplot(2,2,3)
     cortex_angles = {}
     cos = torch.nn.CosineSimilarity(dim=0, eps=1e-8)
-    for cond, c_ind in condition_map[cortex].items():
+    cort_sdf_fig, axs = plt.subplots(3, 1, figsize=(12, 12))
+    plot_neurons = 4
+    cond_neuron_dict = {}
+    for idx, (cond, c_ind) in enumerate(condition_map[cortex].items()):
         cond_sdf = cortex_pca_vals['sdf'][c_ind[0]:c_ind[1]]
+        cond_pc_neurons = V[c_ind[0]:c_ind[1], :3].abs().sort(dim=0, descending=True)
+        # (cond_pc_neurons.values ** 2 / ((V[c_ind[0]:c_ind[1], :3] ** 2).sum(dim=0)))
+        cond_neuron_dict[cond] = {'sdf': cond_sdf, 'indices': cond_pc_neurons.indices}
+        # cond_ax = axs[idx]
+        prop_cycle = plt.rcParams['axes.prop_cycle']
+        clrs = prop_cycle.by_key()['color']
+
+        # for i in range(3):
+        #     color=clrs[idx]
+        #     axs[i].plot(torch.arange(1, cond_sdf.shape[1] * binsize + 1, binsize), cond_sdf[cond_pc_neurons.indices[:plot_neurons, i]].T, label = f'{cond}', color=color)
+        #     if idx == 0:
+        #         axs[i].set_title(f'PC {i+1}')
+        #         axs[i].vlines([epoch_window_map[epoch]['time'] for epoch in epoch_window_map.keys()], cond_sdf.min() * 1.1,
+        #                        cond_sdf.max() * 1.1, color='k')
+
+
         cond_cov = cortex_pca_vals['cov'][c_ind[0]:c_ind[1], c_ind[0]:c_ind[1]]
         cond_var_sum = torch.cumsum(torch.diagonal(V[c_ind[0]:c_ind[1]].T@cond_cov@V[c_ind[0]:c_ind[1]]), dim=0)
         cond_var_explained = cond_var_sum/cond_var_sum.max()
-        ax_var.scatter(np.arange(1, 10 + 1), cond_var_explained[:10], label=region)
+        ax_var.scatter(np.arange(1, 10 + 1), cond_var_explained[:10], label=cond[:6])
         cond_proj = cond_sdf.T@V[c_ind[0]:c_ind[1]]
         x, y, z  = cond_proj[:, :3].T
         ax3.plot(x, y, z, label = cond)
@@ -299,8 +353,13 @@ for cortex in cortex_map.keys():
         angles = {}
         for o_condition in cortex_angles:
             # print(o_condition)
-            angles[o_condition] = cos(cond_proj[:, :n_angles], cortex_angles[o_condition]['v'])
-        cortex_angles[cond] = {'v': cond_proj[:, :n_angles], 'angles':angles}
+            angles[o_condition] = cos(V[c_ind[0]:c_ind[1], :n_angles], cortex_angles[o_condition]['v'])
+        cortex_angles[cond] = {'v': V[c_ind[0]:c_ind[1], :n_angles], 'angles':angles}
+    cond_legend_elements = [Line2D([0], [0], color='gray', marker=cond_shapes[c], markerfacecolor='gray',
+                                   ms = 15, label=c) for c in condition_map[cortex].keys()]
+    cort_sdf_fig = cond_neuron_plot(cond_neuron_dict, epoch_window_map, legend_elements=cond_legend_elements, cond_shapes=cond_shapes)
+    cort_sdf_fig.suptitle(f'SDF for {cortex}')
+    cort_sdf_fig.savefig(f'{pca_dir}/{cortex}_SDF.png', bbox_inches='tight', dpi=200)
     leg2 = ax3.legend(handles=legend_elements, labels=epoch_shapes.keys(), ncols=2, loc = 'lower center')
     sns.move_legend(ax3, 'upper center', ncols=2, bbox_to_anchor=(.5, -.1))
     conds = len(cortex_angles.keys())-1
@@ -312,7 +371,7 @@ for cortex in cortex_map.keys():
             angle_matrix[c_i-1, c_j*n_angles:(c_j+1)*n_angles] = cortex_angles[cond]['angles'][o_cond]
             # print(angle_matrix)
     # angle_fig = plt.figure()
-    im = ax2a.pcolor(angle_matrix, cmap = mpl.colormaps['magma_r'], norm = colors.Normalize(vmin=0.4, vmax=1, clip=True)) #norm=colors.LogNorm(vmin=0.4, vmax = 1)
+    im = ax2a.pcolor(angle_matrix, cmap = mpl.colormaps['magma_r'], norm = colors.Normalize(vmin=0.2, vmax=1, clip=True)) #norm=colors.LogNorm(vmin=0.4, vmax = 1)
     div = make_axes_locatable(ax2a)
     cax = div.append_axes('right', size='5%', pad = 0.05)
     fig.colorbar(im, cax=cax, orientation='vertical')
@@ -364,7 +423,7 @@ ax_angles.set_xticks(ticks = [n_angles/2, 3*n_angles/2], labels = ['M1', 'PMd'])
 ax_angles.set_title(f'Top {n_angles} Principal Angles by Region')
 
 ax_pop_var = fig_pop_pca.add_subplot(2,2,4)
-num_pop_pcs = 50 #pop_V.shape[1]
+num_pop_pcs = 50#pop_V.shape[1]
 pop_S = pop_pca_vals['S']
 pop_var = pop_S.square()
 pop_var_sum = torch.cumsum(pop_var, 0)
@@ -382,7 +441,7 @@ leg2 = ax.legend(handles = legend_elements, labels = epoch_shapes.keys(), loc='u
 # sns.move_legend(ax, 'upper center', ncols=2, bbox_to_anchor=(.5, -.1))
 ax.add_artist(leg1)
 fig_pop_pca.suptitle(f'Merged PCA Across All Regions')
-fig_pop_pca.savefig(f'{pca_dir}/PCTraj3D_ALL.png', dpi = 300, bbox_inches= 'tight')
+fig_pop_pca.savefig(f'{pca_dir}/PCTraj3D_{num_pop_pcs}PCs_ALL.png', dpi = 300, bbox_inches= 'tight')
 
 
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
