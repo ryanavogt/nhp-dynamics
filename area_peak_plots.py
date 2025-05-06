@@ -22,13 +22,13 @@ monkey_name_map: Map labels to full names   - Name label (R, G) -> Full name (Re
 event_map: Name of events for plotting      - Raw event name -> Shortened event name (for labels on plots)
 """
 monkey_name_map = {'R': 'Red', 'G': 'Green'}
-event_map = {'trialRewardDrop': 'Cue', 'trialReachOn':'Reach', 'trialGraspOn':'GraspOn', 'trialEnd':'GraspOff'}
+event_map = {'trialRewardDrop': 'Cue', 'trialReachOn':'Reach', 'trialGraspOn':'GraspOn', 'trialGraspOff':'GraspOff'}
 # Define the reference events and time window defining each epoch
-epoch_window_map = {'Pre-cue':  {'event': 'trialRewardDrop', 'window': [-700,    -100]},
-                   'Post-cue': {'event': 'trialRewardDrop', 'window': [0,       100]},
-                   'Reach':    {'event': 'trialReachOn',    'window': [-100,    200]},
-                   'Grasp On': {'event': 'trialGraspOn',    'window': [-100,    500]},
-                   'Grasp Off':{'event': 'trialEnd',        'window': [-700,    -400]}}
+epoch_window_map = {'Pre-cue':  {'event': 'trialRewardDrop',    'window': [-700,   -100]},
+                   'Post-cue': {'event': 'trialRewardDrop',     'window': [   0,    100]},
+                   'Reach':    {'event': 'trialReachOn',        'window': [-100,    200]},
+                   'Grasp On': {'event': 'trialGraspOn',        'window': [-100,    500]},
+                   'Grasp Off':{'event': 'trialGraspOff',       'window': [-200,    100]}}
 
 #Define directories of data
 data_dir = 'Data/Sorted_Inactivation'
@@ -41,11 +41,11 @@ if not os.path.exists(summary_dir):
 
 lat_map = {'c':'contralateral', 'i':'ipsilateral'}
 hand_list = ['R', 'L']
-events = ['trialRewardDrop', 'trialReachOn', 'trialGraspOn', 'trialEnd']
+events = ['trialRewardDrop', 'trialReachOn', 'trialGraspOn', 'trialGraspOff']
 binsize = 10
-kernel_width = 100
-load_override_preprocess = False
-load_override = False
+kernel_width = 200
+load_override_preprocess = True
+load_override = True
 
 # Extract All Sessions from their Sorting Notes
 file_list = [f for f in glob.glob(f'{sorting_dir}/SortingNotes_*.xlsx')]
@@ -55,8 +55,8 @@ file_names_split = [n.split('_') for n in file_names]
 date_strings = []
 monkey_labels = []
 for name in file_names_split:
-    date_strings.append(name[1]) #Date of Session
-    monkey_labels.append(name[2])#Monkey (G or R)
+    date_strings.append(name[1])    #Date of Session
+    monkey_labels.append(name[2])   #Monkey (G or R)
 
 """
 Aggregate all neurons across all sessions within a single region, separated by lateral 
@@ -152,6 +152,7 @@ else:
             if region_key in area_summary_dict:
                 area_summary_dict[region_key][event]['spikes'] = np.concatenate(area_summary_dict[region_key][event]['spikes'], axis=1)
             sdf_list = []
+            psth_list = []
             neuron_count = area_summary_dict[region_key][event]['neurons'].astype(int)
             neuron_peak_times = np.zeros(neuron_count)
             for neuron_idx in range(neuron_count):
@@ -159,16 +160,14 @@ else:
                 neuron_spikes = area_summary_dict[region_key][event]['spikes'][:, neuron_mask]
                 neuron_spikes[0, :] = 1
                 neuron_psth = gen_psth(neuron_spikes.T, binsize=binsize, window=window_range, neurons=1)
+                psth_list.append(neuron_psth)
                 neuron_sdf, _ = gen_sdf(neuron_psth, w=kernel_width, bin_size=binsize, ftype='Gauss', multi_unit=False)
-                # neuron_scales[neuron_idx] = neuron_sdf[:].max()
                 peak_location = neuron_sdf[:].argmax()
                 neuron_peak_times[neuron_idx] = peak_location
                 time_scale = neuron_psth[:,0]
-                # sdf_scaled_list.append(neuron_sdf[:, 0].T/neuron_scales[neuron_idx])
                 sdf_list.append(neuron_sdf[:, 0].T)
             peak_order = np.argsort(neuron_peak_times)
             peak_order_dict[area_label][event] = peak_order
-            # area_scale_sdf = np.vstack(sdf_scaled_list)
             area_sdf = np.vstack(sdf_list)
             all_sdf_dict[region_key][event] = area_sdf
             event_max_rate = np.max(area_sdf, axis=1)
@@ -204,8 +203,8 @@ for area_label in area_summary_dict.keys():
         plot_dict[orientation][region][event][lat] = area_sdf
         max_dict[orientation][region][event][lat] = {'max':area_sdf.max(axis=1), 'order': peak_order[event]}
 
-skip_plots = True # To save time
-neuron_plot_dir = f'{summary_dir}/Neuron Plots'
+skip_plots = False # To save time
+neuron_plot_dir = f'{summary_dir}/Neuron Plots_bin{binsize}_kernel{kernel_width}'
 index_sides = ['ipsi', 'contra']
 for index_side in index_sides:
     if not os.path.exists(neuron_plot_dir):
@@ -239,7 +238,7 @@ for index_side in index_sides:
 Identify epoch of maximal spike rate and find proportion of neurons with peak in each epoch.
 """
 epoch_names = ['trialRewardDrop', 'trialReachOn', 'trialGraspOn', 'trialGraspOff']
-epoch_windows = {'trialRewardDrop': [0, 100], 'trialReachOn': [-100, 200], 'trialGraspOn':[-100, 500], 'trialEnd':[-700, -400]}
+epoch_windows = {'trialRewardDrop': [0, 100], 'trialReachOn': [-100, 200], 'trialGraspOn':[-100, 500], 'trialGraspOff':[-200, 100]}
 # epoch_windows = {'trialRewardDrop': [0, 100], 'trialReachOn': [-100, 200], 'trialGraspOn':[-100, 500]}
 # events = ['trialRewardDrop', 'trialReachOn', 'trialGraspOn', 'trialGraspOff']
 event_spike_maxes = {}
@@ -271,7 +270,7 @@ for area_label in area_summary_dict.keys():
         event_mask = (full_window>event_window[0]) * (full_window<=event_window[1])
         area_sdf = all_sdf_dict[region_key][event][:, event_mask]
         event_spike_maxes[region_key][epoch] = area_sdf.max(axis=1)
-    event_neuron_peaks = np.vstack(event_spike_maxes[region_key].values())
+    event_neuron_peaks = np.vstack(list(event_spike_maxes[region_key].values()))
     # event_neuron_max[region_key] = event_neuron_peaks == area_max_rate[region_key]
     # for idx, event in enumerate(events):
     #     event_peak_proportions[event] = np.average(event_neuron_max[region_key]==idx)

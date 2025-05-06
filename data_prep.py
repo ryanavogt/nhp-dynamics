@@ -51,6 +51,8 @@ for file in file_list:
     event_df = pd.DataFrame(event_times, columns=events)
     event_df = event_df.astype({'trialNumbers':int})
 
+    # if monkey_name == 'Red':
+    #     print(event_df)
     # Load sorting notes for session neuron metadata
     """
     Contents:
@@ -103,6 +105,7 @@ for file in file_list:
     trial_data['trialGraspOn'] = event_df['trialGraspOn'] - trial_data['trialStartTimes']
     trial_data['trialReachOn'] = event_df['trialReachOn'] - trial_data['trialStartTimes']
     trial_data['trialRewardDrop'] = event_df['trialRewardDrop'] - trial_data['trialStartTimes']
+    trial_data['trialGraspOff'] = event_df['trialGraspOff'] - trial_data['trialStartTimes']
 
 
     with open(f'{save_dir}/trial_data.p', 'wb') as f:
@@ -136,15 +139,27 @@ for file in file_list:
 
         # Record relative event times for each trial
         events = ['trialRewardDrop', 'trialReachOn', 'trialGraspOn', 'trialGraspOff']
+        event_thresholds = {'trialRewardDrop':[500, 3000], 'trialReachOn':[200, 500],
+                            'trialGraspOn':[100, 600], 'trialGraspOff':[200, 1500]}
         rel_event_times = {}
+        prev_times = 0
+        event_masks = []
+        full_mask = True
         for event in events:
             event_times = event_df[event].values
             rel_event_times[event] = event_times - trial_data['trialStartTimes']
+            event_duration = rel_event_times[event] - prev_times
+            event_mask = (event_duration > event_thresholds[event][0])*(event_duration < event_thresholds[event][1])
+            prev_times = rel_event_times[event]
+            event_masks.append(event_mask)
+            full_mask = full_mask*event_mask
+
+        for event in events:
+            rel_event_times[event] = rel_event_times[event][full_mask]
+        print(f'Keep Proportion: {full_mask.sum()/full_mask.shape[0]}\n')
 
         with open(f'{save_dir}/eventTimes.p', 'wb') as event_time_file:
             pkl.dump(rel_event_times, event_time_file)
-
-
         # #Generate psth across all neurons in each area for a single trial
         # kernel_type = 'gpfa'
         # kernel_width = 50
