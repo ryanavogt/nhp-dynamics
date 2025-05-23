@@ -287,7 +287,7 @@ for cortex in cortex_map.keys():
     dict_sdf = center_sdf(sdf)
     U, S, Vh = torch.linalg.svd(dict_sdf['square'], full_matrices=False)
     V = Vh.T
-    cortex_pca_vals = {'U': U, 'S': S, 'V': V, 'cov': cov, 'sdf':dict_sdf['centered']}
+    cortex_pca_vals = {'U': U, 'S': S, 'V': V, 'cov': cov, 'sdf':dict_sdf['centered'], 'cond_map':condition_map[cortex]}
     with open(pca_filename, 'wb') as pca_file:
         pkl.dump(cortex_pca_vals, pca_file)
 
