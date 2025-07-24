@@ -133,7 +133,7 @@ for file in file_list:
                 pkl.dump(rel_spike_times, spike_time_file)
             area_spike_counts[unit][area] = area_spike_count
             area_neuron_counts[unit][area] = area_neuron_count
-            print(f'Area: {area}, Neurons: {area_neuron_count}')
+            print(f'Area: {area}, Neurons: {area_neuron_count}, Spikes: {area_spike_count}')
         with open(f'{save_dir}/spikeCounts_U{unit}.p', 'wb') as spike_count_file:
             pkl.dump(area_spike_counts[unit], spike_count_file)
 
@@ -160,47 +160,5 @@ for file in file_list:
 
         with open(f'{save_dir}/eventTimes.p', 'wb') as event_time_file:
             pkl.dump(rel_event_times, event_time_file)
-        # #Generate psth across all neurons in each area for a single trial
-        # kernel_type = 'gpfa'
-        # kernel_width = 50
-        # bin_size = 10
-        # trial_psth_dir = f'{save_dir}/trial_psth_{bin_size}'
-        # trial_sdf_dir = f'{save_dir}/trial_sdf_{kernel_type}_{kernel_width}'
-        # total_spike_counts = {}
-        #
-        # if not os.path.isdir(trial_psth_dir):
-        #     os.mkdir(trial_psth_dir)
-        # if not os.path.isdir(trial_sdf_dir):
-        #     os.mkdir(trial_sdf_dir)
-        # for trial, (t_start, t_end) in enumerate(trial_windows[:, 2:4]):
-        #     trial += 1
-        #     window = np.array([0, t_end-t_start])
-        #     trial_psth_dict = {}
-        #     trial_sdf_dict = {}
-        #     for unit in units:
-        #         for area in neurons[unit]:
-        #             with open(f'{save_dir}/spikeTimes_U{unit}_{area}.p', 'rb') as spike_time_file:
-        #                 spike_times = pkl.load(spike_time_file)
-        #             area_neurons = len(neurons[unit][area])
-        #             psth_full_bins = np.zeros(math.ceil(window[-1]/bin_size) + 1)
-        #             # psth_full_counts = np.zeros((math.ceil(window[-1]/bin_size) + 1, area_neurons))
-        #             psth_full_counts = []
-        #             for idx, (signal, no_neurons) in enumerate(neurons[unit][area]):
-        #                 trial_mask = (spike_times[signal][:, -1] == trial)
-        #                 psth = gen_psth(spike_times[signal][trial_mask], binsize = bin_size, window = window, neurons = int(no_neurons))
-        #                 psth_bins, psth_counts = psth[:, 0], psth[:, 1:]
-        #                 # psth_full_counts[:, idx] = psth_counts
-        #                 psth_full_counts.append(psth_counts)
-        #                 if idx == 0:
-        #                     psth_full_bins[:] = psth_bins
-        #             psth_full_counts = np.hstack(psth_full_counts)
-        #             trial_psth_dict[area] = (psth_full_bins, psth_full_counts)
-        #             sdf, kernel = gen_sdf(psth_full_counts, kernel_type, w=kernel_width, bin_size=bin_size)
-        #             trial_sdf_dict[area] = (kernel, sdf)
-        #     with open(f'{trial_psth_dir}/PSTH_trial{trial}.p', 'wb') as psth_trial_file:
-        #         pkl.dump(trial_psth_dict, psth_trial_file)
-        #     with open(f'{trial_sdf_dir}/SDF_trial{trial}.p', 'wb') as sdf_trial_file:
-        #         pkl.dump(trial_sdf_dict, sdf_trial_file)
-        #
-        #
-        #     print(f'Trial {trial}')
+        with open(f'{save_dir}/eventMasks.p', 'wb') as event_mask_file:
+            pkl.dump(full_mask, event_mask_file)

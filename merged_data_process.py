@@ -43,8 +43,9 @@ hand_list = ['R', 'L']
 events = ['trialRewardDrop', 'trialReachOn', 'trialGraspOn', 'trialGraspOff']
 binsize = 5
 kernel_width = 25
+trial_count = 100
 load_override_preprocess = False
-load_override = True
+load_override = False
 
 # Extract All Sessions from their Sorting Notes
 file_list = [f for f in glob.glob(f'{sorting_dir}/SortingNotes_*.xlsx')]
@@ -64,12 +65,19 @@ relation to hand used (contra or ipsi) and orientation of target (horizontal or 
 
 area_summary_dict = {}
 all_areas = []
-
-
-spikes_file_name = f'{summary_dir}/spike_summary.p'
-if os.path.exists(spikes_file_name) and not load_override_preprocess:
-    with open(spikes_file_name, 'rb') as spike_file:
-        area_summary_dict = pkl.load(spike_file)
+all_spikes = {}
+all_events =    {'M1': {'Cue':[], 'Reach':[], 'Grasp On':[], 'Grasp Off':[]},
+                 'PMd':{'Cue':[], 'Reach':[], 'Grasp On':[], 'Grasp Off':[]},
+                 'PMv':{'Cue':[], 'Reach':[], 'Grasp On':[], 'Grasp Off': []}
+              }
+summary_file_name = f'{summary_dir}/spike_summary.p'
+spike_file_name = f'{summary_dir}/spike_list.p'
+event_file_name = f'{summary_dir}/event_list.p'
+if os.path.exists(summary_file_name) and not load_override_preprocess:
+    with open(summary_file_name, 'rb') as summary_file:
+        area_summary_dict = pkl.load(summary_file)
+    with open(spike_file_name, 'rb') as spike_file:
+        all_spikes = pkl.load(spike_file)
     print('Spike File Loaded')
 else:
     for date, monkey in zip(date_strings, monkey_labels):
@@ -79,6 +87,8 @@ else:
         trial_dir = f'Data/Processed/{monkey_folder}/{date_folder}' #Folder where to find the session data
         with open(f'{trial_dir}/trial_data.p', 'rb') as trial_file:
             trial_data = pkl.load(trial_file)
+        with open(f'{trial_dir}/eventMasks.p', 'rb') as event_mask_file:
+            full_mask = pkl.load(event_mask_file)
         area_list = [f for f in glob.glob(f'{trial_dir}/spikeTimes_*')] #All brain regions in folder (e.g. M1R, PMdR, PMvL, etc.)
         for area in area_list:
             area_name = area.split('_')[-1].split('.')[0]
@@ -89,16 +99,27 @@ else:
             area_label, area_hemisphere = area_name[:-1], area_name[-1] #Final letter of file name indicates side (R or L)
             if area_label not in all_areas:
                 all_areas.append(area_label)
+                region_spike_list = []
+            else:
+                region_spike_list = all_spikes[area_label]
             for channel in spike_times:
                 channel_spikes = spike_times[channel] #Extract spike times for a single channel
                 # grasp_times = trial_data['trialGraspOn'][channel_spikes[:, -1].astype(int)-1] #Set Grasp onset time to 0
                 if channel_spikes.shape[0]>0:
                     channel_neurons = channel_spikes[:, 0].max()
+                    for neuron in range(1, channel_neurons+1):
+                        neuron_spike_list = []
+                        neuron_spikes = channel_spikes[channel_spikes[:,0]==neuron]
+                        for trial in range(1, trial_count+1):
+                            neuron_spike_list.append(neuron_spikes[neuron_spikes[:,-1]==trial, 1])
+                        region_spike_list.append(neuron_spike_list)
+                        for event in events:
+                            all_events[area_label][event_map[event]].append(list(trial_data[event][:100]))
                     for o_idx, orient in enumerate(['horizontal', 'vertical']):
                         orientation_mask = (trial_data['handOrien']-1)//2 == o_idx
                         for mod in [0,1]:
                             hand_mask = trial_data['handOrien']%2 == mod
-                            spike_mask = np.in1d(channel_spikes[:, -1], np.where(hand_mask*orientation_mask))
+                            spike_mask = np.isin(channel_spikes[:, -1], np.where(hand_mask*orientation_mask*full_mask))
                             hand_label = hand_list[mod]
                             if area_hemisphere == hand_label:
                                 lateral_label = 'i'
@@ -115,8 +136,14 @@ else:
                                                   channel_spikes[spike_mask, 1] - event_times[spike_mask].astype(float)])
                                 area_summary_dict[region_key][event]['spikes'].append(event_spikes)
                                 area_summary_dict[region_key][event]['neurons'] += channel_neurons
-    with open(spikes_file_name, 'wb') as spike_file:
-        pkl.dump(area_summary_dict, spike_file)
+            all_spikes[area_label]=region_spike_list
+    with open(summary_file_name, 'wb') as summary_file:
+        pkl.dump(area_summary_dict, summary_file)
+    with open(spike_file_name, 'wb') as spike_file:
+        pkl.dump(all_spikes, spike_file)
+    with open(event_file_name, 'wb') as event_file:
+        pkl.dump(all_events, event_file)
+    print('Spike File Saved')
 
 """
 Generate plots of the max spiking rates for each area, side, and orientation.
@@ -124,11 +151,14 @@ Scale the rate to the max rate for contralateral side. Apply that scale to ipsil
 """
 # window_range = np.array([-1000, 1000])
 skip = False
-area_max_rate = {}
+area_mean_rate = {}
 all_sdf_filename = f'{summary_dir}/merged_sdfDict_bin{binsize}_k{kernel_width}.p'
+area_mean_filename = f'{summary_dir}/areaMeanRates_bin{binsize}_k{kernel_width}.p'
 if os.path.exists(all_sdf_filename) and not load_override:
     with open(all_sdf_filename, 'rb') as sdf_file:
         all_sdf_dict = pkl.load(sdf_file)
+    with open(area_mean_filename, 'rb') as area_mean_file:
+        area_mean_rate = pkl.load(area_mean_file)
     print(f'SDF Dictionary Loaded (Bin: {binsize}, Kernel: {kernel_width})')
 else:
     all_sdf_dict = {}
@@ -159,6 +189,36 @@ else:
         all_psth = np.vstack(all_psth)
         area_sdf, _ = gen_sdf(all_psth[:, 1:], w=kernel_width, bin_size=binsize, ftype='Gauss', multi_unit=True)
         all_sdf_dict[region_key] = area_sdf.T
-
+        area_mean_rate[region_key] = all_psth[:, 1:].mean(axis=0)
     with open(all_sdf_filename, 'wb') as sdf_file:
         pkl.dump(all_sdf_dict, sdf_file)
+    with open(area_mean_filename, 'wb') as area_mean_file:
+        pkl.dump(area_mean_rate, area_mean_file)
+area_rates = {'M1': {'horizontal': [], 'vertical': [], 'ipsilateral': [], 'contralateral': []},
+              'PMd':{'horizontal': [], 'vertical': [], 'ipsilateral': [], 'contralateral': []},
+              'PMv':{'horizontal': [], 'vertical': [], 'ipsilateral': [], 'contralateral': []}}
+total_rates = {'M1': [], 'PMd': [], 'PMv': []}
+for region_key in area_mean_rate.keys():
+    lat = lat_map[region_key[0]]
+    region, orient = region_key[1:].split('_')
+    area_mean = area_mean_rate[region_key]
+    area_rates[region][orient].append(area_mean)
+    area_rates[region][lat].append(area_mean)
+    total_rates[region].append(area_mean)
+for region in total_rates.keys():
+    total_rates[region] = np.vstack(total_rates[region]).sum(axis=0)
+for region in area_rates.keys():
+    for cond in area_rates[region].keys():
+        rates = area_rates[region][cond]
+        area_rates[region][cond] = np.vstack(rates).sum(axis=0)
+    a_r = area_rates[region]
+    orientation_score = (a_r['vertical'] - a_r['horizontal'])/total_rates[region]
+    hemisphere_score = (a_r['contralateral'] - a_r['ipsilateral']) / total_rates[region]
+    plt.figure(figsize=(10,10))
+    plt.scatter(x=orientation_score, y = hemisphere_score)
+    plt.title(f'Neuron Scores for {region}')
+    plt.xlabel(f'Orientation Score (Vertical - Horizontal)')
+    plt.ylabel(f'Hemisphere Score (Contra - Ipsi)')
+    plt.show()
+
+

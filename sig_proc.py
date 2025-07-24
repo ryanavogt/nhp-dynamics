@@ -19,9 +19,10 @@ def trial_splitter(data, trial_windows, signal_no):
     :return: Spike times relative to start of trial (in ms)
     """
 
-    d = data[sig_name(int(signal_no))][:, 1:4]
-    d[:, 1] = (d[:, 1] * 1000)
-    rel_trial_data = d
+    d = data[sig_name(int(signal_no))][:, 1:4]#.astype(np.uint16)
+    if d.shape[0]>0:
+        d[:, 1] = (d[:, 1] * 1000)
+    rel_trial_data = d.astype(np.uint16)
     rel_trial_data[:, -1] = 0
 
     trial_no = 1

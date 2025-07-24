@@ -142,7 +142,8 @@ def region_projection(all_sdf, pc_dict, region_map, data_region, pc_region, pc_d
     return plot_dict
 
 def cond_neuron_plot(neuron_dict, epoch_window_map, plot_neurons = 4, fig_size = (12, 16), legend_elements=[],
-                     cond_shapes = {'c_vertical': '+', 'c_horizontal': 'x', 'i_vertical': '|', 'i_horizontal': '.'}):
+                     cond_shapes = {'c_vertical': '+', 'c_horizontal': 'x', 'i_vertical': '|', 'i_horizontal': '.'},
+                     mean_plot = False):
     prop_cycle = plt.rcParams['axes.prop_cycle']
     clr_list = prop_cycle.by_key()['color']
     n_rows = len(neuron_dict.keys())
@@ -150,22 +151,31 @@ def cond_neuron_plot(neuron_dict, epoch_window_map, plot_neurons = 4, fig_size =
     for cond_idx, condition in enumerate(neuron_dict.keys()):
         condition_sdf = neuron_dict[condition]['sdf']
         condition_ax = cond_axs[cond_idx]
-        for o_condition in neuron_dict.keys():
-            if o_condition == condition:
-                continue
-            o_cond_idx = neuron_dict[o_condition]['indices']
-            for o_idx in range(3):
-                color = 'gray'
-                condition_ax.plot(torch.arange(1, cond_sdf.shape[1] * binsize + 1, binsize),
-                            condition_sdf[o_cond_idx[:plot_neurons, o_idx]].T,
-                                  marker=cond_shapes[o_condition], markerfacecolor='gray', markevery= 5,
-                                   ms = 10, label=f'PC {o_idx + 1}', alpha =0.6,
-                                   color=color, linestyle=(0, (5, max(1, 5*o_idx))))
+        if not mean_plot:
+            for o_condition in neuron_dict.keys():
+                if o_condition == condition:
+                    continue
+                o_cond_idx = neuron_dict[o_condition]['indices']
+                for o_idx in range(3):
+                    color = 'gray'
+                    condition_ax.plot(torch.arange(1, cond_sdf.shape[1] * binsize + 1, binsize),
+                                condition_sdf[o_cond_idx[:plot_neurons, o_idx]].T,
+                                      marker=cond_shapes[o_condition], markerfacecolor='gray', markevery= 5,
+                                       ms = 10, label=f'PC {o_idx + 1}', alpha =0.6,
+                                       color=color, linestyle=(0, (5, max(1, 5*o_idx))))
         for pc_idx in range(3):
             color=clr_list[pc_idx]
-            condition_ax.plot(torch.arange(1, cond_sdf.shape[1] * binsize + 1, binsize),
-                                        condition_sdf[neuron_dict[condition]['indices'][:plot_neurons, pc_idx]].T,
-                                        color=color, linewidth = 2, linestyle=(0, (5, max(0, 2*pc_idx*0))))
+            if not mean_plot:
+                condition_ax.plot(torch.arange(1, cond_sdf.shape[1] * binsize + 1, binsize),
+                                            condition_sdf[neuron_dict[condition]['indices'][:plot_neurons, pc_idx]].T,
+                                            color=color, linewidth = 2, linestyle=(0, (5, max(0, 2*pc_idx*0))))
+            else:
+                sdf_mean = condition_sdf[neuron_dict[condition]['indices'][:plot_neurons, pc_idx]].mean(dim=0)
+                sdf_error = condition_sdf[neuron_dict[condition]['indices'][:plot_neurons, pc_idx]].std(dim=0)
+                condition_ax.plot(torch.arange(1, cond_sdf.shape[1] * binsize + 1, binsize),
+                                  sdf_mean, color=color, linewidth=2, linestyle=(0, (5, max(0, 2 * pc_idx * 0))))
+                condition_ax.fill_between(torch.arange(1, cond_sdf.shape[1] * binsize + 1, binsize),
+                                  sdf_mean-sdf_error, sdf_mean+sdf_error, facecolor=color, alpha=0.5)
             if cond_idx == 0:
                 legend_elements.append(Line2D([0], [0], color=color, linestyle=(0, (5, max(1, 3*pc_idx))),
                                               label=f'PC {pc_idx+1}'))
@@ -357,9 +367,15 @@ for cortex in cortex_map.keys():
         cortex_angles[cond] = {'v': V[c_ind[0]:c_ind[1], :n_angles], 'angles':angles}
     cond_legend_elements = [Line2D([0], [0], color='gray', marker=cond_shapes[c], markerfacecolor='gray',
                                    ms = 15, label=c) for c in condition_map[cortex].keys()]
-    cort_sdf_fig = cond_neuron_plot(cond_neuron_dict, epoch_window_map, legend_elements=cond_legend_elements, cond_shapes=cond_shapes)
+    mean_plot = True
+    mean_neurons = 5
+    cort_sdf_fig = cond_neuron_plot(cond_neuron_dict, epoch_window_map, plot_neurons=mean_neurons,
+                                    legend_elements=cond_legend_elements, cond_shapes=cond_shapes, mean_plot=True)
     cort_sdf_fig.suptitle(f'SDF for {cortex}')
-    cort_sdf_fig.savefig(f'{pca_dir}/{cortex}_SDF.png', bbox_inches='tight', dpi=200)
+    plot_mean = ''
+    if mean_plot:
+        plot_mean+=f'_mean{mean_neurons}'
+    cort_sdf_fig.savefig(f'{pca_dir}/{cortex}{plot_mean}_SDF.png', bbox_inches='tight', dpi=200)
     leg2 = ax3.legend(handles=legend_elements, labels=epoch_shapes.keys(), ncols=2, loc = 'lower center')
     sns.move_legend(ax3, 'upper center', ncols=2, bbox_to_anchor=(.5, -.1))
     conds = len(cortex_angles.keys())-1
