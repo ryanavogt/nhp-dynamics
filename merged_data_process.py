@@ -7,8 +7,10 @@ import matplotlib.pyplot as plt     #Generating plots
 from sig_proc import *
 import pandas as pd
 import matplotlib as mpl
+from matplotlib import cm
 
 from sig_proc import *
+from plot_utils import *
 
 import seaborn as sns
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
@@ -198,6 +200,7 @@ area_rates = {'M1': {'horizontal': [], 'vertical': [], 'ipsilateral': [], 'contr
               'PMd':{'horizontal': [], 'vertical': [], 'ipsilateral': [], 'contralateral': []},
               'PMv':{'horizontal': [], 'vertical': [], 'ipsilateral': [], 'contralateral': []}}
 total_rates = {'M1': [], 'PMd': [], 'PMv': []}
+nzero_mask = {}
 for region_key in area_mean_rate.keys():
     lat = lat_map[region_key[0]]
     region, orient = region_key[1:].split('_')
@@ -207,18 +210,35 @@ for region_key in area_mean_rate.keys():
     total_rates[region].append(area_mean)
 for region in total_rates.keys():
     total_rates[region] = np.vstack(total_rates[region]).sum(axis=0)
+    nzero_mask[region] = (total_rates[region]>0)
+    total_rates[region] = total_rates[region][nzero_mask[region]]
 for region in area_rates.keys():
+    print(region)
     for cond in area_rates[region].keys():
         rates = area_rates[region][cond]
-        area_rates[region][cond] = np.vstack(rates).sum(axis=0)
+        area_rates[region][cond] = np.vstack(rates).sum(axis=0)[nzero_mask[region]]
     a_r = area_rates[region]
     orientation_score = (a_r['vertical'] - a_r['horizontal'])/total_rates[region]
     hemisphere_score = (a_r['contralateral'] - a_r['ipsilateral']) / total_rates[region]
-    plt.figure(figsize=(10,10))
-    plt.scatter(x=orientation_score, y = hemisphere_score)
-    plt.title(f'Neuron Scores for {region}')
-    plt.xlabel(f'Orientation Score (Vertical - Horizontal)')
-    plt.ylabel(f'Hemisphere Score (Contra - Ipsi)')
-    plt.show()
+    fig, axs = plt.subplot_mosaic([['histx', '.'],
+                                   ['scatter', 'histy']],
+                                  figsize=(6, 6),
+                                  width_ratios=(4, 1.5), height_ratios=(1, 4),
+                                  layout='constrained')
+    ax = axs['scatter']
+    tr = total_rates[region]
+    norm = mpl.colors.LogNorm(vmin = np.nanmin(total_rates[region]), vmax = np.nanmax(total_rates[region]))
+    scatter_hist(ax=axs['scatter'], ax_histx=axs['histx'], ax_histy=axs['histy'], y=orientation_score,
+                 x = hemisphere_score, c=tr, norm='log')
+    plt.colorbar(cm.ScalarMappable(norm=norm), label='Total Rate', ax= axs['histy'])
+    plt.suptitle(f'Neuron Scores for {region}')
+    plt.gcf().text(1, 0.9, in_layout=False, ha='right', va='top',
+                   s= f'x mean = {hemisphere_score.mean():.3f}, x std = {hemisphere_score.std():.3f}\ny mean = {orientation_score.mean():.3f}, y std = {orientation_score.std():.3f}')
+    ax.set_ylabel(f'Orientation Score (Vertical - Horizontal)')
+    ax.set_xlabel(f'Hemisphere Score (Contra - Ipsi)')
+    ax.set_xlim([-1.03,1.03])
+    ax.set_ylim([-1.03,1.03])
+    # plt.tight_layout()
+    plt.savefig(f'{summary_dir}/neuronBias_bin{binsize}_k{kernel_width}_{region}.png', bbox_inches='tight', dpi=200)
 
 
