@@ -58,13 +58,14 @@ def scatter_hist(x, y, ax, ax_histx, ax_histy, binwidth=0.1, **scatter_kwargs):
     ax_histx.tick_params(axis="x", labelbottom=False)
     ax_histy.tick_params(axis="y", labelleft=False)
 
-    # the scatter plot:
+    ax.plot([-1.1, 1.1], [0, 0], 'k--', alpha=0.25)
+    ax.plot([0, 0], [-1.1, 1.1], 'k--', alpha=0.25)
+
     ax.scatter(x, y, **scatter_kwargs)
 
-    # now determine nice limits by hand:
     xymax = max(np.nanmax(np.abs(x)), np.nanmax(np.abs(y)))
     lim = (int(xymax/binwidth) + 1) * binwidth
 
     bins = np.arange(-lim, lim + binwidth, binwidth)
-    ax_histx.hist(x, bins=bins)
-    ax_histy.hist(y, bins=bins, orientation='horizontal')
+    ax_histx.hist(x, bins=bins, color='b')
+    ax_histy.hist(y, bins=bins, orientation='horizontal', color='r')
