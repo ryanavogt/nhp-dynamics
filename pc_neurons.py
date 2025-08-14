@@ -20,11 +20,13 @@ n_bins = 30
 
 summary_dir = f'Data/Processed/Summary'
 pca_dir = f'{summary_dir}/PCA_b{binsize}_k{kernel_width}'
+indices_filename = f'{pca_dir}_pcIndices.p'
 
 
 cortex_list = ['M1', 'PMd', 'PMv']
 cont_prop = [.2, .3, .4, .5, .6]
 cort_inds = {}
+all_indices = {}
 for cort_idx, cortex in enumerate(cortex_list):
     neuron_fig, neuron_axes = plt.subplots(2,2, figsize=(20, 10))
     neuron_fig_zoomed, neuron_axes_zoomed = plt.subplots(2, 2, figsize=(20, 10))
@@ -70,6 +72,7 @@ for cort_idx, cortex in enumerate(cortex_list):
         h_ax_z.set_ylabel(f'Summed Neuron Value')
         # h_ax_z.set_title(f'Zoomed Neuron Contributions for {cortex}')
     inds_list = np.vstack(inds_list)
+    all_indices[cortex] = inds_list
     vals, counts = np.unique(inds_list[:, :zoomed_count]+1, return_counts= True)
     neuron_fig.suptitle(f'PC Contribution for First 3 PCs in {cortex}')
     neuron_fig.savefig(f'{pca_dir}/neuronComp_{cortex}.png', bbox_inches='tight', dpi=300)
@@ -78,4 +81,6 @@ for cort_idx, cortex in enumerate(cortex_list):
     hist_fig.suptitle(f'Histogram of Neuron PC Values Across Conditions')
     hist_fig.savefig(f'{pca_dir}/neuronWeightHist_{cortex}.png', bbox_inches='tight', dpi=300)
     cort_inds[cortex] = [vals, counts]
-print(cort_inds)
+with open(indices_filename, 'wb') as indices_file:
+    pkl.dump(all_indices, indices_file)
+print(all_indices)

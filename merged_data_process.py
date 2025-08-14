@@ -47,7 +47,7 @@ events = ['trialRewardDrop', 'trialReachOn', 'trialGraspOn', 'trialGraspOff']
 binsize = 5
 kernel_width = 25
 trial_count = 100
-load_override_preprocess = False
+load_override_preprocess = True
 load_override = False
 
 # Extract All Sessions from their Sorting Notes
@@ -69,6 +69,7 @@ relation to hand used (contra or ipsi) and orientation of target (horizontal or 
 area_summary_dict = {}
 all_areas = []
 all_spikes = {}
+all_conditions = {}
 all_events =    {'M1': {'Cue':[], 'Reach':[], 'Grasp On':[], 'Grasp Off':[]},
                  'PMd':{'Cue':[], 'Reach':[], 'Grasp On':[], 'Grasp Off':[]},
                  'PMv':{'Cue':[], 'Reach':[], 'Grasp On':[], 'Grasp Off': []}
@@ -76,11 +77,14 @@ all_events =    {'M1': {'Cue':[], 'Reach':[], 'Grasp On':[], 'Grasp Off':[]},
 summary_file_name = f'{summary_dir}/spike_summary.p'
 spike_file_name = f'{summary_dir}/spike_list.p'
 event_file_name = f'{summary_dir}/event_list.p'
+condition_file_name = f'{summary_dir}/condition_list.p'
 if os.path.exists(summary_file_name) and not load_override_preprocess:
     with open(summary_file_name, 'rb') as summary_file:
         area_summary_dict = pkl.load(summary_file)
     with open(spike_file_name, 'rb') as spike_file:
         all_spikes = pkl.load(spike_file)
+    with open(condition_file_name, 'rb') as condition_file:
+        all_conditions = pkl.load(condition_file)
     print('Spike File Loaded')
 else:
     for date, monkey in zip(date_strings, monkey_labels):
@@ -103,21 +107,26 @@ else:
             if area_label not in all_areas:
                 all_areas.append(area_label)
                 region_spike_list = []
+                # all_conditions[area_label] = [trial_data['handOrien'][full_mask]]
+                region_condition_list = []
             else:
                 region_spike_list = all_spikes[area_label]
+                # all_conditions[area_label].append(trial_data['handOrien'][full_mask])
+                region_condition_list = all_conditions[area_label]
             for channel in spike_times:
                 channel_spikes = spike_times[channel] #Extract spike times for a single channel
                 # grasp_times = trial_data['trialGraspOn'][channel_spikes[:, -1].astype(int)-1] #Set Grasp onset time to 0
                 if channel_spikes.shape[0]>0:
                     channel_neurons = channel_spikes[:, 0].max()
+                    channel_conditions = np.empty((len(trial_data['handOrien']), 2), dtype='str_')
                     for neuron in range(1, channel_neurons+1):
                         neuron_spike_list = []
                         neuron_spikes = channel_spikes[channel_spikes[:,0]==neuron]
-                        for trial in range(1, trial_count+1):
+                        for trial in range(1, channel_conditions.shape[0]+1):
                             neuron_spike_list.append(neuron_spikes[neuron_spikes[:,-1]==trial, 1])
                         region_spike_list.append(neuron_spike_list)
                         for event in events:
-                            all_events[area_label][event_map[event]].append(list(trial_data[event][:100]))
+                            all_events[area_label][event_map[event]].append(list(trial_data[event]))
                     for o_idx, orient in enumerate(['horizontal', 'vertical']):
                         orientation_mask = (trial_data['handOrien']-1)//2 == o_idx
                         for mod in [0,1]:
@@ -128,6 +137,8 @@ else:
                                 lateral_label = 'i'
                             else:
                                 lateral_label = 'c'
+                            condition_label = f'{lateral_label}{orient[0]}'
+                            channel_conditions[hand_mask*orientation_mask] = np.array([lateral_label, orient[0]])
                             region_key = f'{lateral_label}{area_label}_{orient}'
                             if region_key not in area_summary_dict:
                                 area_summary_dict[region_key] = {}
@@ -139,13 +150,19 @@ else:
                                                   channel_spikes[spike_mask, 1] - event_times[spike_mask].astype(float)])
                                 area_summary_dict[region_key][event]['spikes'].append(event_spikes)
                                 area_summary_dict[region_key][event]['neurons'] += channel_neurons
+                    for neuron in range(channel_neurons):
+                        # region_condition_list.append(channel_conditions[full_mask])
+                        region_condition_list.append(channel_conditions)
             all_spikes[area_label]=region_spike_list
+            all_conditions[area_label] = region_condition_list
     with open(summary_file_name, 'wb') as summary_file:
         pkl.dump(area_summary_dict, summary_file)
     with open(spike_file_name, 'wb') as spike_file:
         pkl.dump(all_spikes, spike_file)
     with open(event_file_name, 'wb') as event_file:
         pkl.dump(all_events, event_file)
+    with open(condition_file_name, 'wb') as condition_file:
+        pkl.dump(all_conditions, condition_file)
     print('Spike File Saved')
 
 """
