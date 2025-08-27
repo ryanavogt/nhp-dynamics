@@ -141,7 +141,7 @@ def region_projection(all_sdf, pc_dict, region_map, data_region, pc_region, pc_d
     plot_dict = {'Projection': fig}
     return plot_dict
 
-def cond_neuron_plot(neuron_dict, epoch_window_map, plot_neurons = 4, fig_size = (12, 16), legend_elements=[],
+def cond_neuron_plot(neuron_dict, epoch_window_map, plot_neurons = 4, fig_size = (9, 12), legend_elements=[],
                      cond_shapes = {'c_vertical': '+', 'c_horizontal': 'x', 'i_vertical': '|', 'i_horizontal': '.'},
                      mean_plot = False):
     prop_cycle = plt.rcParams['axes.prop_cycle']
@@ -176,14 +176,21 @@ def cond_neuron_plot(neuron_dict, epoch_window_map, plot_neurons = 4, fig_size =
                                   sdf_mean, color=color, linewidth=2, linestyle=(0, (5, max(0, 2 * pc_idx * 0))))
                 condition_ax.fill_between(torch.arange(1, cond_sdf.shape[1] * binsize + 1, binsize),
                                   sdf_mean-sdf_error, sdf_mean+sdf_error, facecolor=color, alpha=0.5)
-            if cond_idx == 0:
-                legend_elements.append(Line2D([0], [0], color=color, linestyle=(0, (5, max(1, 3*pc_idx))),
+            if (cond_idx == 0):
+                if mean_plot:
+                    legend_elements.append(Line2D([0], [0], color=color,
+                                                  label=f'PC {pc_idx + 1}'))
+                else:
+                    legend_elements.append(Line2D([0], [0], color=color, linestyle=(0, (5, max(1, 3*pc_idx))),
                                               label=f'PC {pc_idx+1}'))
         condition_ax.set_title(f'{condition}')
         times = [epoch_window_map[epoch]['time'] for epoch in epoch_window_map.keys()]
         condition_ax.vlines([epoch_window_map[epoch]['time'] for epoch in epoch_window_map.keys()],
                       cond_sdf.min() * 1.1, cond_sdf.max() * 1.1, color='k')
         condition_ax.set_xticks(times, labels = [epoch for epoch in epoch_window_map.keys()])
+        ymin = cond_sdf.min()
+        ymax = cond_sdf.max()
+        condition_ax.set_ylim([ymin, ymax])
     leg = cond_axs[0].legend(handles=legend_elements, loc='lower center', bbox_to_anchor=(.5, 1.1), ncols = 4)
     return cond_fig
 
@@ -325,7 +332,7 @@ for cortex in cortex_map.keys():
     ax_var = fig.add_subplot(2,2,3)
     cortex_angles = {}
     cos = torch.nn.CosineSimilarity(dim=0, eps=1e-8)
-    cort_sdf_fig, axs = plt.subplots(3, 1, figsize=(12, 12))
+    # cort_sdf_fig, axs = plt.subplots(3, 1, figsize=(9,6))
     plot_neurons = 4
     cond_neuron_dict = {}
     for idx, (cond, c_ind) in enumerate(condition_map[cortex].items()):
@@ -365,16 +372,22 @@ for cortex in cortex_map.keys():
             # print(o_condition)
             angles[o_condition] = cos(V[c_ind[0]:c_ind[1], :n_angles], cortex_angles[o_condition]['v'])
         cortex_angles[cond] = {'v': V[c_ind[0]:c_ind[1], :n_angles], 'angles':angles}
-    cond_legend_elements = [Line2D([0], [0], color='gray', marker=cond_shapes[c], markerfacecolor='gray',
-                                   ms = 15, label=c) for c in condition_map[cortex].keys()]
     mean_plot = True
     mean_neurons = 5
+    if not mean_plot:
+        cond_legend_elements = [Line2D([0], [0], color='gray', marker=cond_shapes[c], markerfacecolor='gray',
+                                       ms=15, label=c) for c in condition_map[cortex].keys()]
+        mean_string = ''
+    else:
+        cond_legend_elements = []
+        mean_string = f', Mean over {mean_neurons} Neurons'
     cort_sdf_fig = cond_neuron_plot(cond_neuron_dict, epoch_window_map, plot_neurons=mean_neurons,
                                     legend_elements=cond_legend_elements, cond_shapes=cond_shapes, mean_plot=True)
-    cort_sdf_fig.suptitle(f'SDF for {cortex}')
+    cort_sdf_fig.suptitle(f'SDF for {cortex}{mean_string}', size='xx-large')
     plot_mean = ''
     if mean_plot:
         plot_mean+=f'_mean{mean_neurons}'
+    cort_sdf_fig.tight_layout()
     cort_sdf_fig.savefig(f'{pca_dir}/{cortex}{plot_mean}_SDF.png', bbox_inches='tight', dpi=200)
     leg2 = ax3.legend(handles=legend_elements, labels=epoch_shapes.keys(), ncols=2, loc = 'lower center')
     sns.move_legend(ax3, 'upper center', ncols=2, bbox_to_anchor=(.5, -.1))

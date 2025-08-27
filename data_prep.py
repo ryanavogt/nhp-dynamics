@@ -10,9 +10,12 @@ import scipy.io as sio              #Loading matlab files
 # Local module(s)
 from  sig_proc import *             #Local module - for processing signal data
 
-
-monkey_name_dict = {'G': 'Green', 'R': 'Red'}
-monkey_M1_hemisphere = {'Green': 'R', 'Red': 'R'}
+m_list = ['G', 'R', 'B', 'Y']
+monkey_names_full = {'G':'Green', 'R':'Red', 'Y':'Yellow', 'B':'Blue'}
+monkey_name_dict = {}
+for monkey in m_list:
+    monkey_name_dict[monkey] = monkey_names_full[monkey]
+monkey_M1_hemisphere = {'Green': 'R', 'Red': 'R', 'Blue':'R', 'Yellow':'R'}
 
 #Define directories of data
 data_dir = 'Data/Sorted_Inactivation'
@@ -46,7 +49,7 @@ for file in file_list:
     rt = sio.loadmat(f'{sorting_dir}/relTrialTimes_{year}{month}{day}_{name_label}.mat')['relTrialTimes'][0,0]
 
     # Split absolute start times by event
-    event_times = rt[2]
+    event_times = rt[-1]
     events = rt[0][0].split(' | ')
     event_df = pd.DataFrame(event_times, columns=events)
     event_df = event_df.astype({'trialNumbers':int})

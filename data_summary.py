@@ -19,7 +19,11 @@ matlab_dir = f'{data_dir}/matlabFiles'
 sorting_dir = f'{data_dir}/sortingNotes'
 summary_dir = f'Data/Processed/Summary'
 
-file_list = [f for f in glob.glob(f'{sorting_dir}/SortingNotes_*.xlsx')]
+file_list = []
+# m_list = ['G', 'R']
+m_list = ['G', 'R', 'Y', 'B']
+for m_label in m_list:
+    file_list += [f for f in glob.glob(f'{sorting_dir}/SortingNotes_*{m_label}*.xlsx')]
 
 file_names = [f.split('\\')[-1].split('.xlsx')[0] for f in file_list]
 
@@ -33,6 +37,11 @@ for name in file_names_split:
 data_summary = {}
 spikes_summary = {}
 eventTimes_summary = {}
+
+monkey_colors_full = {'G':'Green', 'R':'Red', 'Y':'Yellow', 'B':'Blue'}
+monkey_colors = {}
+for monkey in m_list:
+    monkey_colors[monkey] = monkey_colors_full[monkey]
 for _, date, monkey in file_names_split:
     print(date)
     if not monkey in data_summary.keys():
@@ -41,10 +50,7 @@ for _, date, monkey in file_names_split:
         spikes_summary[monkey] = {}
     if not monkey in eventTimes_summary.keys():
         eventTimes_summary[monkey] = {}
-    if monkey == 'G':
-        processed_dir = f'Data/Processed/Monkey_Green/{date[:4]}_{date[4:6]}_{date[6:]}'
-    else:
-        processed_dir = f'Data/Processed/Monkey_Red/{date[:4]}_{date[4:6]}_{date[6:]}'
+    processed_dir = f'Data/Processed/Monkey_{monkey_colors[monkey]}/{date[:4]}_{date[4:6]}_{date[6:]}'
     if not os.path.isdir(processed_dir):
         print(f'Data not processed for Monkey {monkey} on {date[:4]}_{date[4:6]}_{date[6:]}')
         continue
@@ -78,13 +84,17 @@ for _, date, monkey in file_names_split:
     spikes_summary[monkey][f'{date[:4]}/{date[4:6]}/{date[6:]}'] = area_spikes
 
 event_lengths = {}
-fig, axs = plt.subplots(1, 2, figsize=(16,5), sharey='row', sharex='row')
+nrows = len(m_list)//2
+fig, axs = plt.subplots(nrows=nrows, ncols=2, figsize=(16,5*nrows), sharey='row', sharex='row')
 all_text_vals = []
 max_length, max_counts = 0, 0
 bin_width = 20
 u_lim = 1000
 for idx, monkey in enumerate(eventTimes_summary.keys()):
-    ax = axs[idx]
+    if nrows > 1:
+        ax = axs[idx//2][idx%2]
+    else:
+        ax = axs[idx]
     event_lengths[monkey] = {}
     temp_time = 0
     text_vals=[]
