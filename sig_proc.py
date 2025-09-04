@@ -10,7 +10,7 @@ def sig_name(signal):
     else:
         return f'sig{signal}'
 
-def trial_splitter(data, trial_windows, signal_no):
+def trial_splitter(data, trial_windows, signal_no, scaling = True):
     """
     Converts absolute spike times to relative spike times within trials
     :param data: Full data dict, with channel no.s as keys - each channel includes absolute spike times (in ms)- Col. 2
@@ -20,7 +20,7 @@ def trial_splitter(data, trial_windows, signal_no):
     """
 
     d = data[sig_name(int(signal_no))][:, 1:4]#.astype(np.uint16)
-    if d.shape[0]>0:
+    if d.shape[0]>0 and scaling:
         d[:, 1] = (d[:, 1] * 1000)
     rel_trial_data = d.astype(np.uint16)
     rel_trial_data[:, -1] = 0

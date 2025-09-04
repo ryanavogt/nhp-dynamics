@@ -17,8 +17,10 @@ event_times = {}
 for epoch in epoch_window_map.keys():
     event_times[epoch] = epoch_window_map[epoch]['time']
 
-def pc_subplot(pca, axs, i, region='', plot_signals=1, window=[0], binsize=5, n_plot =4, projection = True):
+def pc_subplot(pca, axs, i, region='', plot_signals=1, window=[0], binsize=5, n_plot =4, projection = True,
+               event_times=event_times):
     """
+    :param event_times:
     :param pca: Dictionary containing U, S, V from PCA
     :param axs: List of 2D subplot axes
     :param i: Index of subplot

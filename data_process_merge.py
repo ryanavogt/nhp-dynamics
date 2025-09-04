@@ -9,6 +9,7 @@ import pandas as pd
 import matplotlib as mpl
 from matplotlib import cm
 import scipy as sp
+import numpy as np
 
 from sig_proc import *
 from plot_utils import *
@@ -24,13 +25,12 @@ Define maps for reference:
 monkey_name_map: Map labels to full names   - Name label (R, G) -> Full name (Red, Green)
 event_map: Name of events for plotting      - Raw event name -> Shortened event name (for labels on plots)
 """
-monkey_name_map = {'R': 'Red', 'G': 'Green'}
-event_map = {'trialRewardDrop': 'Cue', 'trialReachOn':'Reach', 'trialGraspOn':'Grasp On', 'trialGraspOff':'Grasp Off'}
+# monkey_name_map = {'R': 'Red', 'G': 'Green'}
+monkey_name_map = {'G':'Green', 'R':'Red', 'Y':'Yellow', 'B':'Blue'}
+event_map = {'trialRewardDrop': 'Cue', 'trialGraspOn':'Grasp On'}
 # Define the reference events and time window defining each epoch
-epoch_window_map = {'Cue':      {'event': 'trialRewardDrop', 'window': [-200,   100]},
-                   'Reach':     {'event': 'trialReachOn',    'window': [-100,    60]},
-                   'Grasp On':  {'event': 'trialGraspOn',    'window': [-60,    100]},
-                   'Grasp Off': {'event': 'trialGraspOff',   'window': [-100,   100]}}
+epoch_window_map = {'Cue':      {'event': 'trialRewardDrop', 'window': [-200,   200]},
+                   'Grasp On':  {'event': 'trialGraspOn',    'window': [-100,   500]}}
 
 #Define directories of data
 data_dir = 'Data/Sorted_Inactivation'
@@ -43,12 +43,12 @@ if not os.path.exists(summary_dir):
 
 lat_map = {'c':'contralateral', 'i':'ipsilateral'}
 hand_list = ['R', 'L']
-events = ['trialRewardDrop', 'trialReachOn', 'trialGraspOn', 'trialGraspOff']
+events = ['trialRewardDrop', 'trialGraspOn']
 binsize = 5
 kernel_width = 25
 trial_count = 100
 load_override_preprocess = True
-load_override = False
+load_override = True
 
 # Extract All Sessions from their Sorting Notes
 file_list = [f for f in glob.glob(f'{sorting_dir}/SortingNotes_*.xlsx')]
@@ -70,14 +70,14 @@ area_summary_dict = {}
 all_areas = []
 all_spikes = {}
 all_conditions = {}
-all_events =    {'M1': {'Cue':[], 'Reach':[], 'Grasp On':[], 'Grasp Off':[]},
-                 'PMd':{'Cue':[], 'Reach':[], 'Grasp On':[], 'Grasp Off':[]},
-                 'PMv':{'Cue':[], 'Reach':[], 'Grasp On':[], 'Grasp Off': []}
+all_events =    {'M1': {'Cue':[], 'Grasp On':[]},
+                 'PMd':{'Cue':[], 'Grasp On':[]},
+                 'PMv':{'Cue':[], 'Grasp On':[]}
               }
-summary_file_name = f'{summary_dir}/spike_summary.p'
-spike_file_name = f'{summary_dir}/spike_list.p'
-event_file_name = f'{summary_dir}/event_list.p'
-condition_file_name = f'{summary_dir}/condition_list.p'
+summary_file_name = f'{summary_dir}/spike_summary_merged{len(monkey_name_map.keys())}.p'
+spike_file_name = f'{summary_dir}/spike_list_merged{len(monkey_name_map.keys())}.p'
+event_file_name = f'{summary_dir}/event_list_merged{len(monkey_name_map.keys())}.p'
+condition_file_name = f'{summary_dir}/condition_list_merged{len(monkey_name_map.keys())}.p'
 if os.path.exists(summary_file_name) and not load_override_preprocess:
     with open(summary_file_name, 'rb') as summary_file:
         area_summary_dict = pkl.load(summary_file)
@@ -172,8 +172,8 @@ Scale the rate to the max rate for contralateral side. Apply that scale to ipsil
 # window_range = np.array([-1000, 1000])
 skip = False
 area_mean_rate = {}
-all_sdf_filename = f'{summary_dir}/merged_sdfDict_bin{binsize}_k{kernel_width}.p'
-area_mean_filename = f'{summary_dir}/areaMeanRates_bin{binsize}_k{kernel_width}.p'
+all_sdf_filename = f'{summary_dir}/merged_sdfDict_bin{binsize}_k{kernel_width}_merged{len(monkey_name_map.keys())}.p'
+area_mean_filename = f'{summary_dir}/areaMeanRates_bin{binsize}_k{kernel_width}_merged{len(monkey_name_map.keys())}.p'
 if os.path.exists(all_sdf_filename) and not load_override:
     with open(all_sdf_filename, 'rb') as sdf_file:
         all_sdf_dict = pkl.load(sdf_file)
@@ -257,7 +257,7 @@ for region in area_rates.keys():
     ax.set_xlim([-1.03,1.03])
     ax.set_ylim([-1.03,1.03])
 
-    plt.savefig(f'{summary_dir}/neuronSelection_bin{binsize}_k{kernel_width}_{region}.png',
+    plt.savefig(f'{summary_dir}/neuronSelection_merged{len(monkey_name_map.keys())}_bin{binsize}_k{kernel_width}_{region}.png',
                 bbox_inches='tight', dpi=200)
     f_cum, ax_cum = plt.subplots(figsize=(6,6))
     # ax_cum = axs['cumulative']
@@ -278,5 +278,5 @@ for region in area_rates.keys():
     ax_cum.set_xlim([0,1])
     ax_cum.set_ylim([0,1])
     ax_cum.legend()
-    plt.savefig(f'{summary_dir}/neuronSelectionCumulative_bin{binsize}_k{kernel_width}_{region}.png',
+    plt.savefig(f'{summary_dir}/neuronSelectionCumulative_merged{len(monkey_name_map.keys())}_bin{binsize}_k{kernel_width}_{region}.png',
                 bbox_inches='tight', dpi=200)
