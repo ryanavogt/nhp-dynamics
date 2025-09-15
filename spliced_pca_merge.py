@@ -194,7 +194,8 @@ def cond_neuron_plot(neuron_dict, epoch_window_map, plot_neurons = 4, fig_size =
     leg = cond_axs[0].legend(handles=legend_elements, loc='lower center', bbox_to_anchor=(.5, 1.1), ncols = 4)
     return cond_fig
 
-monkey_name_map = {'G':'Green', 'R':'Red', 'Y':'Yellow', 'B':'Blue'}
+monkey_name_map = {'G':'Green', 'R':'Red'}
+# monkey_name_map = {'G':'Green', 'R':'Red', 'Y':'Yellow', 'B':'Blue'}
 event_map = {'trialRewardDrop': 'Cue', 'trialGraspOn':'Grasp On'}
 # Define the reference events and time window defining each epoch
 epoch_window_map = {'Cue':      {'event': 'trialRewardDrop', 'window': [-200,   200]},

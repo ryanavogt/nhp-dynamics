@@ -25,8 +25,8 @@ Define maps for reference:
 monkey_name_map: Map labels to full names   - Name label (R, G) -> Full name (Red, Green)
 event_map: Name of events for plotting      - Raw event name -> Shortened event name (for labels on plots)
 """
-# monkey_name_map = {'R': 'Red', 'G': 'Green'}
-monkey_name_map = {'G':'Green', 'R':'Red', 'Y':'Yellow', 'B':'Blue'}
+monkey_name_map = {'R': 'Red', 'G': 'Green'}
+# monkey_name_map = {'G':'Green', 'R':'Red', 'Y':'Yellow', 'B':'Blue'}
 event_map = {'trialRewardDrop': 'Cue', 'trialGraspOn':'Grasp On'}
 # Define the reference events and time window defining each epoch
 epoch_window_map = {'Cue':      {'event': 'trialRewardDrop', 'window': [-200,   200]},
@@ -51,7 +51,9 @@ load_override_preprocess = True
 load_override = True
 
 # Extract All Sessions from their Sorting Notes
-file_list = [f for f in glob.glob(f'{sorting_dir}/SortingNotes_*.xlsx')]
+file_list = []
+for m in monkey_name_map.keys():
+    file_list += [f for f in glob.glob(f'{sorting_dir}/SortingNotes_*{m}.xlsx')]
 file_names = [f.split('\\')[-1].split('.xlsx')[0] for f in file_list]
 
 file_names_split = [n.split('_') for n in file_names]
