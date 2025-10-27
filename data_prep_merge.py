@@ -112,21 +112,28 @@ for file in file_list_1+file_list_2:
             pkl.dump(neurons[unit], neuron_file)
 
     trial_data = {}
+    event_durs = {}
+    track_durs = False
     if file in file_list_1:
         # Define time window for each trial
         trial_data['handOrien'] = (event_df['angle'] + event_df['isRightHandUsed']).astype(int)
         trial_data['trialStartTimes'] = (event_df['trialbaseline']*1000).astype(int)
         trial_data['trialRewardDrop'] = (event_df['trialGoCue']*1000).astype(int)- trial_data['trialStartTimes']
         trial_data['trialGraspOn'] = (event_df['trialGraspOn']*1000).astype(int) - trial_data['trialStartTimes']
-        trial_data['trialEnd'] = (event_df['trialGraspOn']*1000).astype(int) + 1000
+        trial_data['trialEnd'] = (event_df['trialGraspOn']*1000).astype(int) + 800
 
     if file in file_list_2:
+        track_durs = True
         trial_data['handOrien'] = event_df['handOrien']
         trial_data['trialStartTimes'] = event_df['trialStartTimes']
         trial_data['trialEnd'] = event_df['trialGraspOn'] + 800
         trial_data['trialGraspOn'] = event_df['trialGraspOn'] - trial_data['trialStartTimes']
+        event_durs['trialGraspOff'] = ((event_df['trialGraspOff']).astype(int) - trial_data['trialGraspOn']
+                                       - trial_data['trialStartTimes'])
         # trial_data['trialReachOn'] = event_df['trialReachOn'] - trial_data['trialStartTimes']
         trial_data['trialRewardDrop'] = event_df['trialRewardDrop'] - trial_data['trialStartTimes']
+        event_durs['trialReachOn'] = ((event_df['trialReachOn']).astype(int) - trial_data['trialRewardDrop']
+                                      - trial_data['trialStartTimes'])
         # trial_data['trialGraspOff'] = event_df['trialGraspOff'] - trial_data['trialStartTimes']
 
     with open(f'{save_dir}/trial_data.p', 'wb') as f:
@@ -162,13 +169,13 @@ for file in file_list_1+file_list_2:
             pkl.dump(area_spike_counts[unit], spike_count_file)
 
         # Record relative event times for each trial
-        events = ['trialRewardDrop', 'trialGraspOn']
+        event_list = ['trialRewardDrop', 'trialGraspOn']
         event_thresholds = {'trialRewardDrop':[200, 2000], 'trialGraspOn':[300, 1000]}
         rel_event_times = {}
         prev_times = 0
         event_masks = []
         full_mask = True
-        for event in events:
+        for event in event_list:
             event_times = trial_data[event].values
             rel_event_times[event] = event_times
             event_duration = rel_event_times[event] - prev_times
@@ -177,10 +184,15 @@ for file in file_list_1+file_list_2:
             event_masks.append(event_mask)
             full_mask = full_mask*event_mask
 
-        for event in events:
+        for event in event_list:
             rel_event_times[event] = rel_event_times[event][full_mask]
         print(f'Keep Proportion: {full_mask.sum()/full_mask.shape[0]}\n')
-
+        durs = {}
+        if track_durs:
+            for event in event_durs.keys():
+                durs[event] = event_durs[event][full_mask]
+            with open(f'{save_dir}/eventDurs.p', 'wb') as event_dur_file:
+                pkl.dump(durs, event_dur_file)
         with open(f'{save_dir}/eventTimes.p', 'wb') as event_time_file:
             pkl.dump(rel_event_times, event_time_file)
         with open(f'{save_dir}/eventMasks.p', 'wb') as event_mask_file:

@@ -25,12 +25,12 @@ Define maps for reference:
 monkey_name_map: Map labels to full names   - Name label (R, G) -> Full name (Red, Green)
 event_map: Name of events for plotting      - Raw event name -> Shortened event name (for labels on plots)
 """
-monkey_name_map = {'R': 'Red', 'G': 'Green'}
-# monkey_name_map = {'G':'Green', 'R':'Red', 'Y':'Yellow', 'B':'Blue'}
+# monkey_name_map = {'R': 'Red', 'G': 'Green'}
+monkey_name_map = {'G':'Green', 'R':'Red', 'Y':'Yellow', 'B':'Blue'}
 event_map = {'trialRewardDrop': 'Cue', 'trialGraspOn':'Grasp On'}
 # Define the reference events and time window defining each epoch
 epoch_window_map = {'Cue':      {'event': 'trialRewardDrop', 'window': [-200,   200]},
-                   'Grasp On':  {'event': 'trialGraspOn',    'window': [-100,   500]}}
+                   'Grasp On':  {'event': 'trialGraspOn',    'window': [-100,   900]}}
 
 #Define directories of data
 data_dir = 'Data/Sorted_Inactivation'
@@ -72,14 +72,17 @@ area_summary_dict = {}
 all_areas = []
 all_spikes = {}
 all_conditions = {}
+all_durs = {}
+all_monkey_indices = {'M1': {'count':0}, 'PMd':{'count':0}, 'PMv':{'count':0}}
 all_events =    {'M1': {'Cue':[], 'Grasp On':[]},
                  'PMd':{'Cue':[], 'Grasp On':[]},
-                 'PMv':{'Cue':[], 'Grasp On':[]}
-              }
+                 'PMv':{'Cue':[], 'Grasp On':[]}}
 summary_file_name = f'{summary_dir}/spike_summary_merged{len(monkey_name_map.keys())}.p'
 spike_file_name = f'{summary_dir}/spike_list_merged{len(monkey_name_map.keys())}.p'
 event_file_name = f'{summary_dir}/event_list_merged{len(monkey_name_map.keys())}.p'
 condition_file_name = f'{summary_dir}/condition_list_merged{len(monkey_name_map.keys())}.p'
+durs_file_name = f'{summary_dir}/durs_list_merged{len(monkey_name_map.keys())}.p'
+monkey_file_name = f'{summary_dir}/monkey_indices_merged{len(monkey_name_map.keys())}.p'
 if os.path.exists(summary_file_name) and not load_override_preprocess:
     with open(summary_file_name, 'rb') as summary_file:
         area_summary_dict = pkl.load(summary_file)
@@ -98,6 +101,14 @@ else:
             trial_data = pkl.load(trial_file)
         with open(f'{trial_dir}/eventMasks.p', 'rb') as event_mask_file:
             full_mask = pkl.load(event_mask_file)
+        if monkey in ['R', 'G']:
+            with open(f'{trial_dir}/eventDurs.p', 'rb') as eventDurs_file:
+                eventDurs = pkl.load(eventDurs_file)
+            for event in eventDurs.keys():
+                if event not in all_durs:
+                    all_durs[event] = [eventDurs[event]]
+                else:
+                    all_durs[event].append(eventDurs[event])
         area_list = [f for f in glob.glob(f'{trial_dir}/spikeTimes_*')] #All brain regions in folder (e.g. M1R, PMdR, PMvL, etc.)
         for area in area_list:
             area_name = area.split('_')[-1].split('.')[0]
@@ -106,6 +117,10 @@ else:
             with open(area, 'rb') as area_file:
                 spike_times = pkl.load(area_file) #Load the spike timing file
             area_label, area_hemisphere = area_name[:-1], area_name[-1] #Final letter of file name indicates side (R or L)
+            area_indices = all_monkey_indices[area_label]
+            if monkey not in area_indices.keys():
+                area_indices[monkey]= []
+            area_neuron_index = area_indices['count']
             if area_label not in all_areas:
                 all_areas.append(area_label)
                 region_spike_list = []
@@ -155,6 +170,9 @@ else:
                     for neuron in range(channel_neurons):
                         # region_condition_list.append(channel_conditions[full_mask])
                         region_condition_list.append(channel_conditions)
+                        area_indices[monkey].append(area_neuron_index)
+                        area_neuron_index += 1
+            all_monkey_indices[area_label]['count'] = area_neuron_index
             all_spikes[area_label]=region_spike_list
             all_conditions[area_label] = region_condition_list
     with open(summary_file_name, 'wb') as summary_file:
@@ -165,13 +183,18 @@ else:
         pkl.dump(all_events, event_file)
     with open(condition_file_name, 'wb') as condition_file:
         pkl.dump(all_conditions, condition_file)
+    with open(durs_file_name, 'wb') as durs_file:
+        for event in all_durs.keys():
+            all_durs[event] = np.hstack(all_durs[event])
+        pkl.dump(all_durs, durs_file)
+    with open(monkey_file_name, 'wb') as monkey_file:
+        pkl.dump(all_monkey_indices, monkey_file)
     print('Spike File Saved')
 
 """
 Generate plots of the max spiking rates for each area, side, and orientation.
 Scale the rate to the max rate for contralateral side. Apply that scale to ipsilateral side.
 """
-# window_range = np.array([-1000, 1000])
 skip = False
 area_mean_rate = {}
 all_sdf_filename = f'{summary_dir}/merged_sdfDict_bin{binsize}_k{kernel_width}_merged{len(monkey_name_map.keys())}.p'
