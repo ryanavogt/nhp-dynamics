@@ -13,6 +13,7 @@ import numpy as np
 
 from sig_proc import *
 from plot_utils import *
+from pandas.plotting import table
 
 import seaborn as sns
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
@@ -47,7 +48,7 @@ events = ['trialRewardDrop', 'trialGraspOn']
 binsize = 5
 kernel_width = 25
 trial_count = 100
-load_override_preprocess = True
+load_override_preprocess = False
 load_override = True
 
 # Extract All Sessions from their Sorting Notes
@@ -90,6 +91,8 @@ if os.path.exists(summary_file_name) and not load_override_preprocess:
         all_spikes = pkl.load(spike_file)
     with open(condition_file_name, 'rb') as condition_file:
         all_conditions = pkl.load(condition_file)
+    with open(monkey_file_name, 'rb') as monkey_file:
+        all_monkey_indices = pkl.load(monkey_file)
     print('Spike File Loaded')
 else:
     for date, monkey in zip(date_strings, monkey_labels):
@@ -190,6 +193,26 @@ else:
     with open(monkey_file_name, 'wb') as monkey_file:
         pkl.dump(all_monkey_indices, monkey_file)
     print('Spike File Saved')
+
+regions = all_monkey_indices.keys()
+monkeys = monkey_name_map.keys()
+region_neurons = {}
+for region in regions:
+    region_neurons[region] = {}
+    for monkey in monkeys:
+        region_neurons[region][monkey] = len(all_monkey_indices[region][monkey])
+neuron_df = pd.DataFrame.from_dict(region_neurons, orient='index')
+fig_dims = (5, 1.5)
+neuron_fig = plt.figure(figsize=fig_dims)
+ax = plt.subplot(111, frame_on=False)
+ax.set_xticks([])
+ax.xaxis.set_label_position('top')
+ax.set_yticks([])
+table(ax, neuron_df, loc='center')
+plt.title(f'Monkey Region Neurons')
+plt.savefig(f'Data/Processed/Summary/monkeyNeurons.png', dpi = 300, bbox_inches = 'tight')
+
+neuron_df.to_csv(f'Data/Processed/Summary/monkeyNeurons.csv')
 
 """
 Generate plots of the max spiking rates for each area, side, and orientation.
