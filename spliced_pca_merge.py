@@ -12,6 +12,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib.colors as colors
 from plot_utils import pc_subplot, epoch_window_map
 from DSA import DSA
+from sklearn.cross_decomposition import CCA
 from sklearn.manifold import MDS
 
 from sig_proc import *
@@ -325,6 +326,7 @@ for cortex in cortex_map.keys():
     pca_filename = f'{pca_dir}/PCA_merged{len(monkey_name_map.keys())}_{cortex}_b{binsize}_k{kernel_width}.p'
     cort = cortex_map[cortex]
     sdf = merged_pop_sdf[cort[0]:cort[1]]
+    monkey_indices['All'] = [0, -1]
     cov = torch.cov(sdf)
     dict_sdf = center_sdf(sdf)
     U, S, Vh = torch.linalg.svd(dict_sdf['square'], full_matrices=False)
@@ -369,9 +371,15 @@ for cortex in cortex_map.keys():
         cortex_angles[monkey] = {}
         monkey_index = np.array(monkey_indices[monkey])
         for idx, (cond, c_ind) in enumerate(condition_map[cortex].items()):
-            cond_sdf = cortex_pca_vals['sdf'][c_ind[0]:c_ind[1]][monkey_index]
+            if monkey != 'All':
+                cond_sdf = cortex_pca_vals['sdf'][c_ind[0]:c_ind[1]][monkey_index]
+                cond_pc_neurons = V[c_ind[0]:c_ind[1], :3][monkey_index].abs().sort(dim=0, descending=True)
+                cond_proj = cond_sdf.T @ (V[c_ind[0]:c_ind[1]][monkey_index])
+            else:
+                cond_sdf = cortex_pca_vals['sdf'][c_ind[0]:c_ind[1]]
+                cond_pc_neurons = V[c_ind[0]:c_ind[1], :3].abs().sort(dim=0, descending=True)
+                cond_proj = cond_sdf.T @ (V[c_ind[0]:c_ind[1]])
             cond_data[monkey].append(cond_sdf.T)
-            cond_pc_neurons = V[c_ind[0]:c_ind[1], :3][monkey_index].abs().sort(dim=0, descending=True)
             cond_event_means = {}
             cond_event_stds = {}
             # (cond_pc_neurons.values ** 2 / ((V[c_ind[0]:c_ind[1], :3] ** 2).sum(dim=0)))
@@ -384,7 +392,6 @@ for cortex in cortex_map.keys():
             cond_var_sum = torch.cumsum(torch.diagonal(V[c_ind[0]:c_ind[1]].T@cond_cov@V[c_ind[0]:c_ind[1]]), dim=0)
             cond_var_explained = cond_var_sum/cond_var_sum.max()
             ax_var.scatter(np.arange(1, 10 + 1), cond_var_explained[:10], label=cond[:6])
-            cond_proj = cond_sdf.T@(V[c_ind[0]:c_ind[1]][monkey_index])
             for event in event_marker_idx.keys():
                 mean_idx = event_marker_idx[event]['mean']
                 std_idx = event_marker_idx[event]['std']
@@ -405,9 +412,15 @@ for cortex in cortex_map.keys():
             # ax2a.plot(y, z, label=cond)
             angles = {}
             for o_condition in cortex_angles[monkey]:
-                # print(o_condition)
-                angles[o_condition] = cos(V[c_ind[0]:c_ind[1], :n_angles][monkey_index], cortex_angles[monkey][o_condition]['v'])
-            cortex_angles[monkey][cond] = {'v': V[c_ind[0]:c_ind[1], :n_angles][monkey_index], 'angles':angles}
+                if monkey != 'All':
+                    angles[o_condition] = cos(V[c_ind[0]:c_ind[1], :n_angles][monkey_index],
+                                              cortex_angles[monkey][o_condition]['v'])
+                else:
+                    angles[o_condition] = cos(V[c_ind[0]:c_ind[1], :n_angles], cortex_angles[monkey][o_condition]['v'])
+            if monkey != 'All':
+                cortex_angles[monkey][cond] = {'v': V[c_ind[0]:c_ind[1], :n_angles][monkey_index], 'angles':angles}
+            else:
+                cortex_angles[monkey][cond] = {'v': V[c_ind[0]:c_ind[1], :n_angles], 'angles': angles}
         mean_plot = True
         mean_neurons = 5
         if not mean_plot:

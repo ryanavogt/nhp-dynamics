@@ -205,7 +205,7 @@ for area_label in area_summary_dict.keys():
         plot_dict[orientation][region][event][lat] = area_sdf
         max_dict[orientation][region][event][lat] = {'max':area_sdf.max(axis=1), 'order': peak_order[event]}
 
-skip_plots = False # To save time
+skip_plots = True # To save time
 neuron_plot_dir = f'{summary_dir}/Neuron Plots_merged{len(monkey_name_map.keys())}_bin{binsize}_kernel{kernel_width}'
 index_sides = ['ipsi', 'contra']
 for index_side in index_sides:
@@ -326,11 +326,13 @@ base_window= epoch_window_map[baseline_epoch]['window']
 baseline_mask = (full_window>base_window[0]) * (full_window<base_window[1])
 p_score = 0.05
 modulation_dict = {}
+up_down_modulation = {}
 for region in all_sdf_dict.keys():
     area, orientation = region.split('_')
     lat, area = area[0], area[1:]
     if orientation not in modulation_dict.keys():
         modulation_dict[orientation] = {}
+        up_down_modulation[orientation] = {}
     baseline_sdf = all_sdf_dict[region][epoch_window_map[baseline_epoch]['event']][:, baseline_mask]
     event_modulations = []
     event_tVals = []
@@ -340,9 +342,12 @@ for region in all_sdf_dict.keys():
         event_tVals.append(mod_tuple[1])
     event_modulations=np.vstack(event_modulations)
     event_tVals = np.vstack(event_tVals)
+    #Add storage for up-modulation and down-modulation
     if area not in modulation_dict[orientation].keys():
         modulation_dict[orientation][area] = {}
+        up_down_modulation[orientation][area] = {}
     modulation_dict[orientation][area][lat_map[lat]] = {'modulations':event_modulations, 'tVals':event_tVals}
+    up_down_modulation[orientation][area][lat_map[lat]] = np.stack([event_modulations*event_tVals<0, event_modulations*event_tVals >0])
 
 """
 Plot modulation by epoch and compute modulation by hand used
@@ -351,21 +356,24 @@ hand_use_mod = {}
 for orientation in modulation_dict.keys():
     f, axs = plt.subplots(nrows=1, ncols=3, figsize=(12, 4), sharey='row')
     hand_use_mod[orientation] = {}
-    for idx, region in enumerate(modulation_dict[orientation].keys()):
+    for idx, region in enumerate(up_down_modulation[orientation].keys()):
         hand_use_mod[orientation][region] = {}
         ax = axs[idx]
         multiplier = 0
         hand_mod = []
-        for side, mod_tuple in modulation_dict[orientation][region].items():
-            modulation = mod_tuple['modulations']
-            if merge_grasp:
-                modulation[-2] = np.logical_or(modulation[-2], modulation[-1])
-            modulation = modulation[:-1]
-            hand_mod.append(modulation)
-            offset = width*multiplier
-            mod_perc = np.average(modulation, axis=1)
-            max_height = 100
-            rects = ax.bar(x+offset, mod_perc*100, width, label=side)
+        for side, mod_tuple in up_down_modulation[orientation][region].items():
+            bar_base = 0
+            for i, mod_val in enumerate(['down', 'up']):
+                modulation = mod_tuple[i]
+                if merge_grasp:
+                    modulation[-2] = np.logical_or(modulation[-2], modulation[-1])
+                    modulation = modulation[:-1]
+                hand_mod.append(modulation)
+                offset = width*multiplier
+                mod_perc = np.average(modulation, axis=1)
+                max_height = 100
+                rects = ax.bar(x+offset, mod_perc*100, width, bottom=bar_base, label=f'{side}, {mod_val}')
+                bar_base = mod_perc*100
             multiplier+= 1
         # Compute the share of modulated neurons across each hand
         hand_nonSpecific = ~np.bitwise_xor(hand_mod[0], hand_mod[1])
@@ -380,12 +388,11 @@ for orientation in modulation_dict.keys():
         ax.set_xticks(x + width * (multiplier - 1) / 2, [e.split(' ')[0] for e in list(epoch_window_map.keys())[1:]])
         # ax.legend(loc='upper left', ncols=3)
     handles, labels = plt.gca().get_legend_handles_labels()
-    f.legend(handles, labels, loc = (0.5, 0), ncols=3)
-    sns.move_legend(f, "lower center", bbox_to_anchor=(.5, -.06), ncol=3)
+    f.legend(handles, labels, loc = (0.5, 0), ncols=4)
+    sns.move_legend(f, "lower center", bbox_to_anchor=(.5, -.1), ncol=4)
     sns.despine()
     f.suptitle(f'Modulation by Epoch, {orientation.capitalize()}')
     plt.savefig(f'{summary_dir}/Modulation_merged{len(monkey_name_map.keys())}_{orientation}.png', bbox_inches='tight')
-
 
 width = 0.3
 for orientation in modulation_dict.keys():
