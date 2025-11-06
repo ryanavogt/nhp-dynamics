@@ -322,6 +322,7 @@ for event in all_durs.keys():
     event_marker_idx[event] = {'mean':mean_idx, 'std':std_idcs}
 
 for cortex in cortex_map.keys():
+    var_plot_pcs = 'all'
     monkey_indices = all_monkey_indices[cortex]
     pca_filename = f'{pca_dir}/PCA_merged{len(monkey_name_map.keys())}_{cortex}_b{binsize}_k{kernel_width}.p'
     cort = cortex_map[cortex]
@@ -391,7 +392,10 @@ for cortex in cortex_map.keys():
             cond_cov = cortex_pca_vals['cov'][c_ind[0]:c_ind[1], c_ind[0]:c_ind[1]]
             cond_var_sum = torch.cumsum(torch.diagonal(V[c_ind[0]:c_ind[1]].T@cond_cov@V[c_ind[0]:c_ind[1]]), dim=0)
             cond_var_explained = cond_var_sum/cond_var_sum.max()
-            ax_var.scatter(np.arange(1, 10 + 1), cond_var_explained[:10], label=cond[:6])
+            cond_var_len = cond_var_explained.shape[0]
+            if var_plot_pcs == 'all':
+                var_plot_pcs = cond_var_len
+            ax_var.scatter(np.arange(1, var_plot_pcs + 1), cond_var_explained[:var_plot_pcs], label=cond[:6])
             for event in event_marker_idx.keys():
                 mean_idx = event_marker_idx[event]['mean']
                 std_idx = event_marker_idx[event]['std']
@@ -411,16 +415,14 @@ for cortex in cortex_map.keys():
                 ax2.scatter(em_x, em_y, marker=event_shapes[event_map[event]], c='k', alpha=0.4,s=100)
             # ax2a.plot(y, z, label=cond)
             angles = {}
-            for o_condition in cortex_angles[monkey]:
-                if monkey != 'All':
-                    angles[o_condition] = cos(V[c_ind[0]:c_ind[1], :n_angles][monkey_index],
-                                              cortex_angles[monkey][o_condition]['v'])
-                else:
-                    angles[o_condition] = cos(V[c_ind[0]:c_ind[1], :n_angles], cortex_angles[monkey][o_condition]['v'])
             if monkey != 'All':
-                cortex_angles[monkey][cond] = {'v': V[c_ind[0]:c_ind[1], :n_angles][monkey_index], 'angles':angles}
+                V_cond = V[c_ind[0]:c_ind[1]][monkey_index] / np.linalg.norm(V[c_ind[0]:c_ind[1]][monkey_index], axis=0)
             else:
-                cortex_angles[monkey][cond] = {'v': V[c_ind[0]:c_ind[1], :n_angles], 'angles': angles}
+                V_cond = V[c_ind[0]:c_ind[1]] / np.linalg.norm(V[c_ind[0]:c_ind[1]][monkey_index], axis=0)
+            for o_condition in cortex_angles[monkey]:
+                product = V_cond @ cortex_angles[monkey][o_condition]['v'].T
+                _, angles[o_condition], _ = np.linalg.svd(product)
+            cortex_angles[monkey][cond] = {'v': V_cond, 'angles':angles}
         mean_plot = True
         mean_neurons = 5
         if not mean_plot:
@@ -467,7 +469,7 @@ for cortex in cortex_map.keys():
 
         var = S.square()
         var_sum = torch.cumsum(var, 0)
-        ax_var.scatter(range(1, 11), var_sum[:10]/var_sum[-1], label= 'All', color='k')
+        ax_var.scatter(range(1, var_plot_pcs+1), var_sum[:var_plot_pcs]/var_sum[-1], label= 'All', color='k')
         ax_var.set_xlabel('PC index')
         ax_var.set_ylabel('Variance Explained')
         ax_var.set_ylim([0, 1.05])
