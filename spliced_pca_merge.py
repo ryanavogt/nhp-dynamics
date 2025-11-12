@@ -14,6 +14,7 @@ from plot_utils import pc_subplot, epoch_window_map
 from DSA import DSA
 from sklearn.cross_decomposition import CCA
 from sklearn.manifold import MDS
+from DSA.stats import *
 
 from sig_proc import *
 
@@ -371,6 +372,9 @@ for cortex in cortex_map.keys():
         cond_data[monkey] = []
         cortex_angles[monkey] = {}
         monkey_index = np.array(monkey_indices[monkey])
+        if monkey != 'All':
+            m_neurons = len(monkey_index)
+        else: m_neurons = max(cort)
         for idx, (cond, c_ind) in enumerate(condition_map[cortex].items()):
             if monkey != 'All':
                 cond_sdf = cortex_pca_vals['sdf'][c_ind[0]:c_ind[1]][monkey_index]
@@ -416,11 +420,13 @@ for cortex in cortex_map.keys():
             # ax2a.plot(y, z, label=cond)
             angles = {}
             if monkey != 'All':
-                V_cond = V[c_ind[0]:c_ind[1]][monkey_index] / np.linalg.norm(V[c_ind[0]:c_ind[1]][monkey_index], axis=0)
+                V_square = V[c_ind[0]:c_ind[1], c_ind[0]:c_ind[1]][monkey_index].T[monkey_index].T
+                V_cond = V_square / np.linalg.norm(V_square, axis=0)
             else:
-                V_cond = V[c_ind[0]:c_ind[1]] / np.linalg.norm(V[c_ind[0]:c_ind[1]][monkey_index], axis=0)
+                V_square = V[c_ind[0]:c_ind[1], c_ind[0]:c_ind[1]]
+                V_cond = V_square / np.linalg.norm(V_square, axis=0)
             for o_condition in cortex_angles[monkey]:
-                product = V_cond @ cortex_angles[monkey][o_condition]['v'].T
+                product = V_cond.T @ cortex_angles[monkey][o_condition]['v']
                 _, angles[o_condition], _ = np.linalg.svd(product)
             cortex_angles[monkey][cond] = {'v': V_cond, 'angles':angles}
         mean_plot = True
@@ -452,7 +458,8 @@ for cortex in cortex_map.keys():
             if c_i == 0:
                 continue
             for c_j, o_cond in enumerate(cortex_angles[monkey][cond]['angles'].keys()):
-                angle_matrix[c_i-1, c_j*n_angles:(c_j+1)*n_angles] = cortex_angles[monkey][cond]['angles'][o_cond]
+                angle_matrix[c_i-1, c_j*min(n_angles, m_neurons):(c_j+1)*min(n_angles, m_neurons)] = (
+                    torch.Tensor(cortex_angles[monkey][cond]['angles'][o_cond][:n_angles]))
                 # print(angle_matrix)
         # angle_fig = plt.figure()
         im = ax2a.pcolor(angle_matrix, cmap = mpl.colormaps['magma_r'], norm = colors.Normalize(vmin=0.2, vmax=1, clip=True)) #norm=colors.LogNorm(vmin=0.4, vmax = 1)
@@ -490,36 +497,53 @@ for cortex in cortex_map.keys():
         fig.savefig(f'{pca_dir}/PCTraj3D_{cortex}_monkey{monkey}.png', dpi = 300, bbox_inches= 'tight')
         plt.close(fig)
 
-    # # Start DSA Computation
-    # for n_delays in [1,5,10]:
-    #     for rank in [3, 10, 20]:
-    #         delay_interval=1
-    #         # rank = rank
-    #         device = 'cpu'
-    #         dsa=DSA(cond_data, n_delays=n_delays, rank=rank, delay_interval=delay_interval, device=device)
-    #         similarities = dsa.fit_score()
-    #         fig_sim = plt.figure()
-    #         sns.heatmap(similarities, vmax=.01)
-    #         plt.xticks([0.5,1.5,2.5,3.5], labels=list(condition_map[cortex].keys()))
-    #         plt.yticks([0.5,1.5,2.5,3.5], labels=list(condition_map[cortex].keys()))
-    #         plt.title(f'{cortex} DMD Similarities, delays={n_delays}')
-    #         plt.savefig(f'{pca_dir}/DMDSimilarities_{cortex}_delays{n_delays}_rank{rank}.png')
-    #         plt.close()
-            # df = pandas.DataFrame()
-            # df['Conditions'] = list(condition_map[cortex].keys())
-            # reduced = MDS(dissimilarity='precomputed').fit_transform(similarities)
-            # df["0"] = reduced[:, 0]
-            # df["1"] = reduced[:, 1]
-            #
-            # palette = 'plasma'
-            # fig = plt.figure(figsize=(8,6))
-            # sns.scatterplot(data=df, x="0", y="1", hue="Conditions", palette=palette)
-            # plt.xlabel(f"MDS 1")
-            # plt.ylabel(f"MDS 2")
-            # plt.tight_layout()
-            # plt.title(f'{cortex} Clustering')
-            # plt.savefig(f'{pca_dir}/DMDClustering_{cortex}_delays{n_delays}_rank{rank}.png')
-            # plt.close()
+    # Start DSA Computation
+    ranks = [3,10,20,50]
+    for n_delays in [5,10,20]:
+        dmd_fig, axs = plt.subplots(len(ranks)//2, 2, figsize = (12,8))
+        plt.suptitle(f'DMD Projections for {n_delays} delays')
+        for r_i, rank in enumerate(ranks):
+            delay_interval=1
+            ax = axs[r_i//2][r_i%2]
+            # rank = rank
+            monkey = 'All'
+            device = 'cpu'
+            dsa=DSA(cond_data[monkey], n_delays=n_delays, rank=rank, delay_interval=delay_interval, device=device)
+            similarities = dsa.fit_score()
+            for idx, (cond, c_ind) in enumerate(condition_map[cortex].items()):
+                dmd = dsa.dmds[0][idx]
+                preds = dmd.predict()
+                pred_proj = preds@V[c_ind[0]:c_ind[1]][0]
+                data_proj = dmd.data@V[c_ind[0]:c_ind[1]][0]
+                ax.plot(pred_proj[:, :2], label = f'{cond} predicted')
+                ax.plot(data_proj[:, :2], label = f'{cond} actual')
+            ax.title(f'Trajectories for Rank {rank}')
+            ax.xlabel('PC 1')
+            ax.ylabel('PC 2')
+            ax.legend()
+            plt.savefig(f'{pca_dir}/DMDProjections_{cortex}_delays{n_delays}_rank{rank}.png')
+            fig_sim = plt.figure()
+            sns.heatmap(similarities, vmax=.01)
+            plt.xticks([0.5,1.5,2.5,3.5], labels=list(condition_map[cortex].keys()))
+            plt.yticks([0.5,1.5,2.5,3.5], labels=list(condition_map[cortex].keys()))
+            plt.title(f'{cortex} DMD Similarities, delays={n_delays}')
+            plt.savefig(f'{pca_dir}/DMDSimilarities_{cortex}_delays{n_delays}_rank{rank}.png')
+            plt.close()
+            df = pandas.DataFrame()
+            df['Conditions'] = list(condition_map[cortex].keys())
+            reduced = MDS(dissimilarity='precomputed').fit_transform(similarities)
+            df["0"] = reduced[:, 0]
+            df["1"] = reduced[:, 1]
+
+            palette = 'plasma'
+            fig = plt.figure(figsize=(8,6))
+            sns.scatterplot(data=df, x="0", y="1", hue="Conditions", palette=palette)
+            plt.xlabel(f"MDS 1")
+            plt.ylabel(f"MDS 2")
+            plt.tight_layout()
+            plt.title(f'{cortex} Clustering')
+            plt.savefig(f'{pca_dir}/DMDClustering_{cortex}_delays{n_delays}_rank{rank}.png')
+            plt.close()
 
 full_angle_matrix = torch.empty(n_cort, n_cort*n_angles)
 for c_i, cort in enumerate(full_angles.keys()):
