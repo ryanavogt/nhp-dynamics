@@ -339,7 +339,8 @@ for cortex in cortex_map.keys():
 
     pop_V = pop_pca_vals['V']
     full_proj = dict_sdf['centered'].T@pop_V[cort[0]:cort[1]]
-    reg_var_sum = torch.cumsum(torch.diagonal(pop_V[cort[0]:cort[1]].T@cortex_pca_vals['cov']@pop_V[cort[0]:cort[1]]), dim=0)
+    reg_var_sum = torch.cumsum(torch.diagonal(pop_V[cort[0]:cort[1]].T@cortex_pca_vals['cov']@pop_V[cort[0]:cort[1]]),
+                               dim=0)
     region_var_explained[cortex] = reg_var_sum/reg_var_sum.max()
     x, y, z = full_proj[:, :3].T
     ax.plot(x, y, z, label = cortex)
@@ -450,7 +451,8 @@ for cortex in cortex_map.keys():
         # cort_sdf_fig.savefig(f'{pca_dir}/{cortex}_monkey{monkey}{plot_mean}_SDF.png',
         #                      bbox_inches='tight', dpi=200)
         plt.close(cort_sdf_fig)
-        leg2 = ax3.legend(handles=legend_elements, labels=list(epoch_shapes.keys())+list(event_shapes.keys()), ncols=2, loc = 'lower center')
+        leg2 = ax3.legend(handles=legend_elements, labels=list(epoch_shapes.keys())+list(event_shapes.keys()),
+                                    ncols=2, loc = 'lower center')
         sns.move_legend(ax3, 'upper center', ncols=2, bbox_to_anchor=(.5, -.1))
         conds = len(cortex_angles[monkey].keys())-1
         angle_matrix = torch.empty(conds, conds*n_angles)
@@ -462,7 +464,8 @@ for cortex in cortex_map.keys():
                     torch.Tensor(cortex_angles[monkey][cond]['angles'][o_cond][:n_angles]))
                 # print(angle_matrix)
         # angle_fig = plt.figure()
-        im = ax2a.pcolor(angle_matrix, cmap = mpl.colormaps['magma_r'], norm = colors.Normalize(vmin=0.2, vmax=1, clip=True)) #norm=colors.LogNorm(vmin=0.4, vmax = 1)
+        im = ax2a.pcolor(angle_matrix, cmap = mpl.colormaps['magma_r'],
+                         norm = colors.Normalize(vmin=0.2, vmax=1, clip=True)) #norm=colors.LogNorm(vmin=0.4, vmax = 1)
         div = make_axes_locatable(ax2a)
         cax = div.append_axes('right', size='5%', pad = 0.05)
         fig.colorbar(im, cax=cax, orientation='vertical')
@@ -498,8 +501,10 @@ for cortex in cortex_map.keys():
         plt.close(fig)
 
     # Start DSA Computation
+    print('Starting DMD Computation')
     ranks = [3,10,20,50]
     for n_delays in [5,10,20]:
+        print(f'Delays {n_delays}')
         dmd_fig, axs = plt.subplots(len(ranks)//2, 2, figsize = (12,8))
         plt.suptitle(f'DMD Projections for {n_delays} delays')
         for r_i, rank in enumerate(ranks):
@@ -513,37 +518,39 @@ for cortex in cortex_map.keys():
             for idx, (cond, c_ind) in enumerate(condition_map[cortex].items()):
                 dmd = dsa.dmds[0][idx]
                 preds = dmd.predict()
-                pred_proj = preds@V[c_ind[0]:c_ind[1]][0]
-                data_proj = dmd.data@V[c_ind[0]:c_ind[1]][0]
-                ax.plot(pred_proj[:, :2], label = f'{cond} predicted')
-                ax.plot(data_proj[:, :2], label = f'{cond} actual')
-            ax.title(f'Trajectories for Rank {rank}')
-            ax.xlabel('PC 1')
-            ax.ylabel('PC 2')
+                pred_proj = (preds@V[c_ind[0]:c_ind[1]])[0]
+                x_pred, y_pred, z_pred = pred_proj[:,:3].T
+                data_proj = (dmd.data@V[c_ind[0]:c_ind[1]])[0]
+                x_data, y_data, z_data = data_proj[:,:3].T
+                ax.plot(x_pred, y_pred, label = f'{cond} predicted')
+                ax.plot(x_data, y_data, label = f'{cond} actual')
+            ax.set_title(f'Trajectories for Rank {rank}')
+            ax.set_xlabel('PC 1')
+            ax.set_ylabel('PC 2')
             ax.legend()
-            plt.savefig(f'{pca_dir}/DMDProjections_{cortex}_delays{n_delays}_rank{rank}.png')
-            fig_sim = plt.figure()
-            sns.heatmap(similarities, vmax=.01)
-            plt.xticks([0.5,1.5,2.5,3.5], labels=list(condition_map[cortex].keys()))
-            plt.yticks([0.5,1.5,2.5,3.5], labels=list(condition_map[cortex].keys()))
-            plt.title(f'{cortex} DMD Similarities, delays={n_delays}')
-            plt.savefig(f'{pca_dir}/DMDSimilarities_{cortex}_delays{n_delays}_rank{rank}.png')
-            plt.close()
-            df = pandas.DataFrame()
-            df['Conditions'] = list(condition_map[cortex].keys())
-            reduced = MDS(dissimilarity='precomputed').fit_transform(similarities)
-            df["0"] = reduced[:, 0]
-            df["1"] = reduced[:, 1]
-
-            palette = 'plasma'
-            fig = plt.figure(figsize=(8,6))
-            sns.scatterplot(data=df, x="0", y="1", hue="Conditions", palette=palette)
-            plt.xlabel(f"MDS 1")
-            plt.ylabel(f"MDS 2")
-            plt.tight_layout()
-            plt.title(f'{cortex} Clustering')
-            plt.savefig(f'{pca_dir}/DMDClustering_{cortex}_delays{n_delays}_rank{rank}.png')
-            plt.close()
+        plt.savefig(f'{pca_dir}/DMDProjections_{cortex}_delays{n_delays}.png')
+            # fig_sim = plt.figure()
+            # sns.heatmap(similarities, vmax=.01)
+            # plt.xticks([0.5,1.5,2.5,3.5], labels=list(condition_map[cortex].keys()))
+            # plt.yticks([0.5,1.5,2.5,3.5], labels=list(condition_map[cortex].keys()))
+            # plt.title(f'{cortex} DMD Similarities, delays={n_delays}')
+            # plt.savefig(f'{pca_dir}/DMDSimilarities_{cortex}_delays{n_delays}_rank{rank}.png')
+            # plt.close()
+            # df = pandas.DataFrame()
+            # df['Conditions'] = list(condition_map[cortex].keys())
+            # reduced = MDS(dissimilarity='precomputed').fit_transform(similarities)
+            # df["0"] = reduced[:, 0]
+            # df["1"] = reduced[:, 1]
+            #
+            # palette = 'plasma'
+            # fig = plt.figure(figsize=(8,6))
+            # sns.scatterplot(data=df, x="0", y="1", hue="Conditions", palette=palette)
+            # plt.xlabel(f"MDS 1")
+            # plt.ylabel(f"MDS 2")
+            # plt.tight_layout()
+            # plt.title(f'{cortex} Clustering')
+            # plt.savefig(f'{pca_dir}/DMDClustering_{cortex}_delays{n_delays}_rank{rank}.png')
+            # plt.close()
 
 full_angle_matrix = torch.empty(n_cort, n_cort*n_angles)
 for c_i, cort in enumerate(full_angles.keys()):
@@ -553,7 +560,8 @@ for c_i, cort in enumerate(full_angles.keys()):
         print(o_cort)
         full_angle_matrix[c_i-1, c_j*n_angles:(c_j+1)*n_angles] = full_angles[cort]['angles'][o_cort]
 ax_angles = fig_pop_pca.add_subplot(2, 2, 2)
-im = ax_angles.pcolor(full_angle_matrix, cmap = mpl.colormaps['magma_r'], norm = colors.Normalize(vmin=0.4, vmax=1, clip=True)) #norm=colors.LogNorm(vmin=0.4, vmax = 1)
+im = ax_angles.pcolor(full_angle_matrix, cmap = mpl.colormaps['magma_r'],
+                      norm = colors.Normalize(vmin=0.4, vmax=1, clip=True)) #norm=colors.LogNorm(vmin=0.4, vmax = 1)
 div = make_axes_locatable(ax_angles)
 ax_angles.vlines([n_angles], 0, n_cort, colors = 'w')
 ax_angles.hlines([1], 0, n_cort*n_angles, colors = 'w')
@@ -582,7 +590,8 @@ leg2 = ax.legend(handles = legend_elements, labels = epoch_shapes.keys(), loc='u
 # sns.move_legend(ax, 'upper center', ncols=2, bbox_to_anchor=(.5, -.1))
 ax.add_artist(leg1)
 fig_pop_pca.suptitle(f'Merged PCA Across All Regions, , {len(monkey_name_map.keys())} Monkeys')
-fig_pop_pca.savefig(f'{pca_dir}/PCTraj3D_merged{len(monkey_name_map.keys())}_{num_pop_pcs}PCs_ALL.png', dpi = 300, bbox_inches= 'tight')
+fig_pop_pca.savefig(f'{pca_dir}/PCTraj3D_merged{len(monkey_name_map.keys())}_{num_pop_pcs}PCs_ALL.png',
+                    dpi = 300, bbox_inches= 'tight')
 
 
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
