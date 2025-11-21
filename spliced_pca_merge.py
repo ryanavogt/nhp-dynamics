@@ -14,6 +14,7 @@ from plot_utils import pc_subplot, epoch_window_map
 from DSA import DSA
 from sklearn.cross_decomposition import CCA
 from sklearn.manifold import MDS
+import pandas as pd
 from DSA.stats import *
 
 from sig_proc import *
@@ -503,32 +504,59 @@ for cortex in cortex_map.keys():
     # Start DSA Computation
     print('Starting DMD Computation')
     ranks = [3,10,20,50]
-    for n_delays in [5,10,20]:
-        print(f'Delays {n_delays}')
-        dmd_fig, axs = plt.subplots(len(ranks)//2, 2, figsize = (12,8))
-        plt.suptitle(f'DMD Projections for {n_delays} delays')
-        for r_i, rank in enumerate(ranks):
-            delay_interval=1
-            ax = axs[r_i//2][r_i%2]
-            # rank = rank
-            monkey = 'All'
-            device = 'cpu'
-            dsa=DSA(cond_data[monkey], n_delays=n_delays, rank=rank, delay_interval=delay_interval, device=device)
-            similarities = dsa.fit_score()
-            for idx, (cond, c_ind) in enumerate(condition_map[cortex].items()):
-                dmd = dsa.dmds[0][idx]
-                preds = dmd.predict()
-                pred_proj = (preds@V[c_ind[0]:c_ind[1]])[0]
-                x_pred, y_pred, z_pred = pred_proj[:,:3].T
-                data_proj = (dmd.data@V[c_ind[0]:c_ind[1]])[0]
-                x_data, y_data, z_data = data_proj[:,:3].T
-                ax.plot(x_pred, y_pred, label = f'{cond} predicted')
-                ax.plot(x_data, y_data, label = f'{cond} actual')
-            ax.set_title(f'Trajectories for Rank {rank}')
-            ax.set_xlabel('PC 1')
-            ax.set_ylabel('PC 2')
-            ax.legend()
-        plt.savefig(f'{pca_dir}/DMDProjections_{cortex}_delays{n_delays}.png')
+    pd.options.display.float_format = '{:,.3f}'.format
+    for monkey in monkey_indices.keys():
+        if monkey == 'count':
+            continue
+        monkey_index = np.array(monkey_indices[monkey])
+        print(f'Monkey {monkey}')
+        for n_delays in [5,10,20]:
+            delay_errors = {}
+            print(f'Delays {n_delays}')
+            dmd_fig, axs = plt.subplots(len(ranks)//2, 2, figsize = (12,12), subplot_kw={'projection': '3d'})
+            plt.suptitle(f'DMD Projections for {n_delays} delays')
+            for r_i, rank in enumerate(ranks):
+                delay_interval=1
+                ax = axs[r_i//2][r_i%2]
+                # rank = rank
+                # monkey = 'All'
+                device = 'cpu'
+                dsa=DSA(cond_data[monkey], n_delays=n_delays, rank=rank, delay_interval=delay_interval, device=device)
+                similarities = dsa.fit_score()
+                rank_errors = []
+                for idx, (cond, c_ind) in enumerate(condition_map[cortex].items()):
+                    dmd = dsa.dmds[0][idx]
+                    preds = dmd.predict()
+                    if monkey == 'All':
+                        V_cm = V[c_ind[0]:c_ind[1]]
+                    else:
+                        V_cm = V[c_ind[0]:c_ind[1]][monkey_index]
+                    pred_proj = (preds @ V_cm)[0]
+                    x_pred, y_pred, z_pred = pred_proj[:,:3].T
+                    data_proj = (dmd.data@V_cm)[0]
+                    x_data, y_data, z_data = data_proj[:,:3].T
+                    ax.plot(x_pred, y_pred, z_pred, label = f'{cond} predicted')
+                    ax.plot(x_data, y_data, z_data, label = f'{cond} actual')
+                    rank_errors.append(mse(dmd.data, preds))
+                delay_errors[rank] = rank_errors
+                ax.set_title(f'Trajectories for Rank {rank}')
+                ax.set_xlabel('PC 1')
+                ax.set_ylabel('PC 2')
+                ax.legend()
+            plt.tight_layout()
+            plt.savefig(f'{pca_dir}/DMDProjections_{monkey}_{cortex}_delays{n_delays}.png')
+            plt.close()
+            error_df = pd.DataFrame(data=delay_errors, index=list(condition_map[cortex].keys()))
+            error_df.style.format(precision = 3)
+            err_fig = plt.figure(figsize=(5,2))
+            err_ax = plt.subplot(111, frame_on=False)
+            err_ax.set_xticks([])
+            err_ax.xaxis.set_label_position('top')
+            err_ax.set_yticks([])
+            pd.plotting.table(err_ax, error_df, loc='center')
+            plt.title(f'DMD MSE Error for Monkey {monkey}, {cortex}, N_delays = {n_delays}')
+            plt.savefig(f'{pca_dir}/DMDErrors_{monkey}_{cortex}_delays{n_delays}.png', dpi=300, bbox_inches='tight')
+            plt.close()
             # fig_sim = plt.figure()
             # sns.heatmap(similarities, vmax=.01)
             # plt.xticks([0.5,1.5,2.5,3.5], labels=list(condition_map[cortex].keys()))
@@ -667,7 +695,8 @@ for region in var_plot_dict.keys():
     fig_var.suptitle(f'Variance Explained by First {pc_plot_dims} PCs of {region}\nAcross Hemisphere. , {len(monkey_name_map.keys())} Monkeys')
     sns.despine(fig=fig_var)
     print('Hemi Plot')
-    fig_var.savefig(f'{pca_dir}/varExplained_merged{len(monkey_name_map.keys())}_{region}_{pc_plot_dims}PCs.png', bbox_inches='tight', dpi = 200)
+    fig_var.savefig(f'{pca_dir}/varExplained_merged{len(monkey_name_map.keys())}_{region}_{pc_plot_dims}PCs.png',
+                    bbox_inches='tight', dpi = 200)
 
     fig_orient, orient_axes = orient_plot_dict[region]
     handles, labels = orient_axes[0].get_legend_handles_labels()
@@ -677,7 +706,8 @@ for region in var_plot_dict.keys():
     fig_orient.suptitle(f'Variance Explained by First {pc_plot_dims} PCs of {region}\nAcross Orientation, , {len(monkey_name_map.keys())} Monkeys')
     sns.despine(fig=fig_orient)
     print('Orientation Plot')
-    fig_orient.savefig(f'{pca_dir}/varExplainedOrientation_merged{len(monkey_name_map.keys())}_{region}_{pc_plot_dims}PCs.png', bbox_inches='tight', dpi=200)
+    fig_orient.savefig(f'{pca_dir}/varExplainedOrientation_merged{len(monkey_name_map.keys())}_{region}_{pc_plot_dims}PCs.png',
+                       bbox_inches='tight', dpi=200)
 
     fig_proj, proj_axes = proj_plot_dict[region]
     handles, labels = proj_axes[0].get_legend_handles_labels()
@@ -687,4 +717,5 @@ for region in var_plot_dict.keys():
     fig_proj.suptitle(f'{region} Data Projected Onto\nFirst {projection_dims} PCs')
     sns.despine(fig=fig_proj)
     # print('Orientation Plot')
-    fig_proj.savefig(f'{pca_dir}/projectionPC_merged{len(monkey_name_map.keys())}_{region}.png', bbox_inches='tight', dpi=200)
+    fig_proj.savefig(f'{pca_dir}/projectionPC_merged{len(monkey_name_map.keys())}_{region}.png',
+                     bbox_inches='tight', dpi=200)
