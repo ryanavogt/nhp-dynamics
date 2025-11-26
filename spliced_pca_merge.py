@@ -329,7 +329,7 @@ for cortex in cortex_map.keys():
     pca_filename = f'{pca_dir}/PCA_merged{len(monkey_name_map.keys())}_{cortex}_b{binsize}_k{kernel_width}.p'
     cort = cortex_map[cortex]
     sdf = merged_pop_sdf[cort[0]:cort[1]]
-    monkey_indices['All'] = [0, -1]
+    monkey_indices['All'] = np.arange(monkey_indices['count'])
     cov = torch.cov(sdf)
     dict_sdf = center_sdf(sdf)
     U, S, Vh = torch.linalg.svd(dict_sdf['square'], full_matrices=False)
@@ -378,14 +378,10 @@ for cortex in cortex_map.keys():
             m_neurons = len(monkey_index)
         else: m_neurons = max(cort)
         for idx, (cond, c_ind) in enumerate(condition_map[cortex].items()):
-            if monkey != 'All':
-                cond_sdf = cortex_pca_vals['sdf'][c_ind[0]:c_ind[1]][monkey_index]
-                cond_pc_neurons = V[c_ind[0]:c_ind[1], :3][monkey_index].abs().sort(dim=0, descending=True)
-                cond_proj = cond_sdf.T @ (V[c_ind[0]:c_ind[1]][monkey_index])
-            else:
-                cond_sdf = cortex_pca_vals['sdf'][c_ind[0]:c_ind[1]]
-                cond_pc_neurons = V[c_ind[0]:c_ind[1], :3].abs().sort(dim=0, descending=True)
-                cond_proj = cond_sdf.T @ (V[c_ind[0]:c_ind[1]])
+            cond_sdf = cortex_pca_vals['sdf'][c_ind[0]:c_ind[1]][monkey_index]
+            cond_pc_neurons = V[c_ind[0]:c_ind[1], :3][monkey_index].abs().sort(dim=0, descending=True)
+            cond_proj = cond_sdf.T @ (V[c_ind[0]:c_ind[1]][monkey_index])
+
             cond_data[monkey].append(cond_sdf.T)
             cond_event_means = {}
             cond_event_stds = {}
@@ -527,10 +523,7 @@ for cortex in cortex_map.keys():
                 for idx, (cond, c_ind) in enumerate(condition_map[cortex].items()):
                     dmd = dsa.dmds[0][idx]
                     preds = dmd.predict()
-                    if monkey == 'All':
-                        V_cm = V[c_ind[0]:c_ind[1]]
-                    else:
-                        V_cm = V[c_ind[0]:c_ind[1]][monkey_index]
+                    V_cm = V[c_ind[0]:c_ind[1]][monkey_index]
                     pred_proj = (preds @ V_cm)[0]
                     x_pred, y_pred, z_pred = pred_proj[:,:3].T
                     data_proj = (dmd.data@V_cm)[0]
