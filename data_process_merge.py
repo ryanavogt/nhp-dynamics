@@ -164,12 +164,13 @@ else:
                                 area_summary_dict[region_key] = {}
                             for event in events:
                                 if event not in area_summary_dict[region_key]:
-                                    area_summary_dict[region_key][event] = {'spikes':[], 'neurons': 0}
+                                    area_summary_dict[region_key][event] = {'spikes':[], 'neurons': 0, 'trial_idcs':[]}
                                 event_times = trial_data[event][channel_spikes[:, -1].astype(int) - 1]
                                 event_spikes = np.vstack([channel_spikes[spike_mask, 0] + area_summary_dict[region_key][event]['neurons'],
                                                   channel_spikes[spike_mask, 1] - event_times[spike_mask].astype(float)])
                                 area_summary_dict[region_key][event]['spikes'].append(event_spikes)
                                 area_summary_dict[region_key][event]['neurons'] += channel_neurons
+                                area_summary_dict[region_key][event]['trial_idcs'].append(channel_spikes[spike_mask, -1])
                     for neuron in range(channel_neurons):
                         # region_condition_list.append(channel_conditions[full_mask])
                         region_condition_list.append(channel_conditions)
@@ -222,6 +223,7 @@ skip = False
 area_mean_rate = {}
 all_sdf_filename = f'{summary_dir}/merged_sdfDict_bin{binsize}_k{kernel_width}_merged{len(monkey_name_map.keys())}.p'
 area_mean_filename = f'{summary_dir}/areaMeanRates_bin{binsize}_k{kernel_width}_merged{len(monkey_name_map.keys())}.p'
+all_psth_filename = f'{summary_dir}/trialPSTH_bin{binsize}_k{kernel_width}_merged{len(monkey_name_map.keys())}.p'
 if os.path.exists(all_sdf_filename) and not load_override:
     with open(all_sdf_filename, 'rb') as sdf_file:
         all_sdf_dict = pkl.load(sdf_file)
@@ -230,6 +232,7 @@ if os.path.exists(all_sdf_filename) and not load_override:
     print(f'SDF Dictionary Loaded (Bin: {binsize}, Kernel: {kernel_width})')
 else:
     all_sdf_dict = {}
+    all_psth_dict = {}
     for area_label in area_summary_dict.keys():
         if skip:
             break
@@ -237,31 +240,46 @@ else:
         print(region_key)
         lat = region_key[0]
         all_psth = []
+        all_trial_psth = []
+        all_spikes = []
         for event in events:
             window_range = np.array(epoch_window_map[event_map[event]]['window'])
             num_bins = int(1.0*(window_range.max() - window_range.min())/binsize)
             if region_key in area_summary_dict:
                 area_summary_dict[region_key][event]['spikes'] = np.concatenate(area_summary_dict[region_key][event]['spikes'], axis=1)
+                area_summary_dict[region_key][event]['trial_idcs'] = np.concatenate(area_summary_dict[region_key][event]['trial_idcs'])
             sdf_list = []
             neuron_count = area_summary_dict[region_key][event]['neurons'].astype(int)
             psth_list = np.zeros((num_bins, neuron_count+1))
+            trial_psth_list = []
             for neuron_idx in range(neuron_count):
                 neuron_mask = area_summary_dict[region_key][event]['spikes'][0, :] == neuron_idx+1
                 neuron_spikes = area_summary_dict[region_key][event]['spikes'][:, neuron_mask]
+                if neuron_spikes.shape[1] == 0:
+                    print(f'No spikes for neuron {neuron_idx+1}')
+                neuron_trials = area_summary_dict[region_key][event]['trial_idcs'][neuron_mask]
                 neuron_spikes[0, :] = 1
+                psth_trials = trial_psth(neuron_spikes.T, neuron_trials, binsize=binsize, window=window_range, neurons=1)
+                psth_trials = np.stack(psth_trials, axis=-1)
                 neuron_psth = gen_psth(neuron_spikes.T, binsize=binsize, window=window_range, neurons=1)
                 if neuron_idx == 0:
                     psth_list[:, 0] = neuron_psth[1:, 0]
                 psth_list[:, neuron_idx+1] = neuron_psth[1:, 1]
+                trial_psth_list.append(psth_trials)
             all_psth.append(psth_list)
+            all_trial_psth.append(np.stack(trial_psth_list, axis=-1))
         all_psth = np.vstack(all_psth)
+        all_trial_psth = np.vstack(all_trial_psth)
         area_sdf, _ = gen_sdf(all_psth[:, 1:], w=kernel_width, bin_size=binsize, ftype='Gauss', multi_unit=True)
         all_sdf_dict[region_key] = area_sdf.T
+        all_psth_dict[region_key] = all_trial_psth
         area_mean_rate[region_key] = all_psth[:, 1:].mean(axis=0)
     with open(all_sdf_filename, 'wb') as sdf_file:
         pkl.dump(all_sdf_dict, sdf_file)
     with open(area_mean_filename, 'wb') as area_mean_file:
         pkl.dump(area_mean_rate, area_mean_file)
+    with open(all_psth_filename, 'wb') as psth_file:
+        pkl.dump(all_psth_dict, psth_file)
 area_rates = {'M1': {'horizontal': [], 'vertical': [], 'ipsilateral': [], 'contralateral': []},
               'PMd':{'horizontal': [], 'vertical': [], 'ipsilateral': [], 'contralateral': []},
               'PMv':{'horizontal': [], 'vertical': [], 'ipsilateral': [], 'contralateral': []}}

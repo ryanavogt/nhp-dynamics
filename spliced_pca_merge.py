@@ -16,6 +16,7 @@ from sklearn.cross_decomposition import CCA
 from sklearn.manifold import MDS
 import pandas as pd
 from DSA.stats import *
+from Monkey import *
 
 from sig_proc import *
 
@@ -236,13 +237,17 @@ if not os.path.exists(pca_dir):
 all_sdf_filename = f'{summary_dir}/merged_sdfDict_bin{binsize}_k{kernel_width}_merged{len(monkey_name_map.keys())}.p'
 all_durs_filename = f'{summary_dir}/durs_list_merged{len(monkey_name_map.keys())}.p'
 all_monkeys_filename = f'{summary_dir}/monkey_indices_merged{len(monkey_name_map.keys())}.p'
+all_psth_filename = f'{summary_dir}/trialPSTH_bin{binsize}_k{kernel_width}_merged{len(monkey_name_map.keys())}.p'
+
 with open(all_monkeys_filename, 'rb') as monkey_idcs_file:
     all_monkey_indices = pkl.load(monkey_idcs_file)
 with open(all_sdf_filename, 'rb') as sdf_file:
     all_sdf_dict = pkl.load(sdf_file)
+with open(all_psth_filename, 'rb') as psth_file:
+    all_psth_dict = pkl.load(psth_file)
 
 pop_filename = f'{pca_dir}/pop_dict_b{binsize}_k{kernel_width}_merged{len(monkey_name_map.keys())}.p'
-merged_pop_dict = {'sdf':[], 'idx':0}
+merged_pop_dict = {'sdf':[], 'idx':0, 'psth':[]}
 if os.path.exists(pop_filename) and not new_popdict:
     with open(pop_filename, 'rb') as pop_file:
         pop_tuple = pkl.load(pop_file)
@@ -250,6 +255,7 @@ if os.path.exists(pop_filename) and not new_popdict:
         print('Population Dictionary Loaded')
 else:
     merged_population_dict = {}
+    merged_psth_dict = {}
     region_map = {'idx':0}
     condition_map  = {}
     cortex_map = {'idx':0}
@@ -258,10 +264,13 @@ else:
         side, cortex = region[0], region[1:]
         if orientation not in merged_population_dict.keys():
             merged_population_dict[orientation] = []
+            merged_psth_dict[orientation] = []
         if cortex not in condition_map.keys():
             condition_map[cortex] = {'idx':0}
         sdf = all_sdf_dict[area]
         sdf = sdf[:,0].T
+        psth = all_psth_dict[area].transpose(2,1,0)
+        merged_psth_dict[orientation].append(psth)
         sdf_max = sdf.max(axis=1)+5*binsize/1000
         # zero_mask = sdf.max(axis=1) > 0
         sdf = sdf/np.repeat(np.expand_dims(sdf_max, 1), sdf.shape[1], axis=1)
@@ -280,20 +289,29 @@ else:
             condition_map[cortex][or_key] = region_boundaries
             condition_map[cortex]['idx'] += sdf.shape[0]
         merged_pop_dict['sdf'].append(sdf)
+        merged_pop_dict['psth'].append(psth)
     for orientation, sdf_list in merged_population_dict.items():
         merged_population_dict[orientation] = np.vstack(sdf_list)
+    for orientation, psth_list in merged_psth_dict.items():
+        merged_psth_dict[orientation] = np.vstack(psth_list)
     del region_map['idx']
     for cor in condition_map.keys():
         del condition_map[cor]['idx']
     del cortex_map['idx']
     merged_pop_sdf = torch.Tensor(np.vstack(merged_pop_dict['sdf']))
+    merged_pop_psth = torch.Tensor(np.vstack(merged_pop_dict['psth']))
     pop_sdf_dict = center_sdf(merged_pop_sdf)
     U, S, Vh = torch.linalg.svd(pop_sdf_dict['square'], full_matrices=False)
     V = Vh.T
-    pop_pca_vals = {'U': U, 'S': S, 'V': V, 'sdf': pop_sdf_dict['centered']}
+    pop_pca_vals = {'U': U, 'S': S, 'V': V, 'sdf': pop_sdf_dict['centered'], 'psth':merged_pop_psth}
     pop_pca_filename = f'{summary_dir}/merged{len(monkey_name_map.keys())}_sdfPCA_bin{binsize}_k{kernel_width}.p'
-    with open(pop_pca_filename, 'wb') as pop_file:
-        pkl.dump(pop_pca_vals, pop_file)
+    pop_psth_filename = f'{summary_dir}/merged{len(monkey_name_map.keys())}_psth_bin{binsize}_k{kernel_width}.p'
+    with open(pop_pca_filename, 'wb') as pop_pca_file:
+        pkl.dump(pop_pca_vals, pop_pca_file)
+    with open(pop_filename, 'wb') as pop_file:
+        pkl.dump(merged_pop_dict, pop_file)
+    # with open(pop_psth_filename, 'wb') as psth_file:
+    #     pkl.dump(pop_pca_vals, psth_file)
 
 
 pca_overwrite = True
@@ -323,18 +341,21 @@ for event in all_durs.keys():
     std_idcs = [np.argmin(np.abs(all_x-(event_mean-event_std))), np.argmin(np.abs(all_x+event_std))]
     event_marker_idx[event] = {'mean':mean_idx, 'std':std_idcs}
 
+monkeys = {}
 for cortex in cortex_map.keys():
     var_plot_pcs = 'all'
     monkey_indices = all_monkey_indices[cortex]
     pca_filename = f'{pca_dir}/PCA_merged{len(monkey_name_map.keys())}_{cortex}_b{binsize}_k{kernel_width}.p'
     cort = cortex_map[cortex]
     sdf = merged_pop_sdf[cort[0]:cort[1]]
+    psth = merged_pop_psth[cort[0]:cort[1]]
     monkey_indices['All'] = np.arange(monkey_indices['count'])
     cov = torch.cov(sdf)
     dict_sdf = center_sdf(sdf)
     U, S, Vh = torch.linalg.svd(dict_sdf['square'], full_matrices=False)
     V = Vh.T
-    cortex_pca_vals = {'U': U, 'S': S, 'V': V, 'cov': cov, 'sdf':dict_sdf['centered'], 'cond_map':condition_map[cortex]}
+    cortex_pca_vals = {'U': U, 'S': S, 'V': V, 'cov': cov, 'sdf':dict_sdf['centered'],
+                       'cond_map':condition_map[cortex], 'psth': psth}
     with open(pca_filename, 'wb') as pca_file:
         pkl.dump(cortex_pca_vals, pca_file)
 
@@ -365,6 +386,14 @@ for cortex in cortex_map.keys():
     for monkey in monkey_indices.keys():
         if monkey == 'count':
             continue
+        if monkey not in monkeys.keys():
+            monkeys[monkey] = Monkey(monkey, kernel_width, binsize, epoch_window_map)
+        monkey_obj = monkeys[monkey]
+        monkey_obj.get_indices(monkey_indices, cortex)
+        monkey_obj.get_savedir(summary_dir)
+        monkey_obj.get_sdf(cortex_pca_vals['sdf'], condition_map[cortex], cortex)
+        monkey_obj.get_svd(V, condition_map[cortex], cortex)
+        monkey_obj.get_trial_psth(cortex_pca_vals['psth'], condition_map[cortex], cortex)
         fig = plt.figure(cortex, figsize=(7, 10))
         ax2 = fig.add_subplot(2, 2, 1)
         ax2a = fig.add_subplot(2, 2, 4)
@@ -498,58 +527,58 @@ for cortex in cortex_map.keys():
         plt.close(fig)
 
     # Start DSA Computation
-    print('Starting DMD Computation')
-    ranks = [3,10,20,50]
-    pd.options.display.float_format = '{:,.3f}'.format
-    for monkey in monkey_indices.keys():
-        if monkey == 'count':
-            continue
-        monkey_index = np.array(monkey_indices[monkey])
-        print(f'Monkey {monkey}')
-        for n_delays in [5,10,20]:
-            delay_errors = {}
-            print(f'Delays {n_delays}')
-            dmd_fig, axs = plt.subplots(len(ranks)//2, 2, figsize = (12,12), subplot_kw={'projection': '3d'})
-            plt.suptitle(f'DMD Projections for {n_delays} delays')
-            for r_i, rank in enumerate(ranks):
-                delay_interval=1
-                ax = axs[r_i//2][r_i%2]
-                # rank = rank
-                # monkey = 'All'
-                device = 'cpu'
-                dsa=DSA(cond_data[monkey], n_delays=n_delays, rank=rank, delay_interval=delay_interval, device=device)
-                similarities = dsa.fit_score()
-                rank_errors = []
-                for idx, (cond, c_ind) in enumerate(condition_map[cortex].items()):
-                    dmd = dsa.dmds[0][idx]
-                    preds = dmd.predict()
-                    V_cm = V[c_ind[0]:c_ind[1]][monkey_index]
-                    pred_proj = (preds @ V_cm)[0]
-                    x_pred, y_pred, z_pred = pred_proj[:,:3].T
-                    data_proj = (dmd.data@V_cm)[0]
-                    x_data, y_data, z_data = data_proj[:,:3].T
-                    ax.plot(x_pred, y_pred, z_pred, label = f'{cond} predicted')
-                    ax.plot(x_data, y_data, z_data, label = f'{cond} actual')
-                    rank_errors.append(mse(dmd.data, preds))
-                delay_errors[rank] = rank_errors
-                ax.set_title(f'Trajectories for Rank {rank}')
-                ax.set_xlabel('PC 1')
-                ax.set_ylabel('PC 2')
-                ax.legend()
-            plt.tight_layout()
-            plt.savefig(f'{pca_dir}/DMDProjections_{monkey}_{cortex}_delays{n_delays}.png')
-            plt.close()
-            error_df = pd.DataFrame(data=delay_errors, index=list(condition_map[cortex].keys()))
-            error_df.style.format(precision = 3)
-            err_fig = plt.figure(figsize=(5,2))
-            err_ax = plt.subplot(111, frame_on=False)
-            err_ax.set_xticks([])
-            err_ax.xaxis.set_label_position('top')
-            err_ax.set_yticks([])
-            pd.plotting.table(err_ax, error_df, loc='center')
-            plt.title(f'DMD MSE Error for Monkey {monkey}, {cortex}, N_delays = {n_delays}')
-            plt.savefig(f'{pca_dir}/DMDErrors_{monkey}_{cortex}_delays{n_delays}.png', dpi=300, bbox_inches='tight')
-            plt.close()
+    # print('Starting DMD Computation')
+    # ranks = [3,10,20,50]
+    # pd.options.display.float_format = '{:,.3f}'.format
+    # for monkey in monkey_indices.keys():
+    #     if monkey == 'count':
+    #         continue
+    #     monkey_index = np.array(monkey_indices[monkey])
+    #     print(f'Monkey {monkey}')
+    #     for n_delays in [5,10,20]:
+    #         delay_errors = {}
+    #         print(f'Delays {n_delays}')
+    #         dmd_fig, axs = plt.subplots(len(ranks)//2, 2, figsize = (12,12), subplot_kw={'projection': '3d'})
+    #         plt.suptitle(f'DMD Projections for {n_delays} delays')
+    #         for r_i, rank in enumerate(ranks):
+    #             delay_interval=1
+    #             ax = axs[r_i//2][r_i%2]
+    #             # rank = rank
+    #             # monkey = 'All'
+    #             device = 'cpu'
+    #             dsa=DSA(cond_data[monkey], n_delays=n_delays, rank=rank, delay_interval=delay_interval, device=device)
+    #             similarities = dsa.fit_score()
+    #             rank_errors = []
+    #             for idx, (cond, c_ind) in enumerate(condition_map[cortex].items()):
+    #                 dmd = dsa.dmds[0][idx]
+    #                 preds = dmd.predict()
+    #                 V_cm = V[c_ind[0]:c_ind[1]][monkey_index]
+    #                 pred_proj = (preds @ V_cm)[0]
+    #                 x_pred, y_pred, z_pred = pred_proj[:,:3].T
+    #                 data_proj = (dmd.data@V_cm)[0]
+    #                 x_data, y_data, z_data = data_proj[:,:3].T
+    #                 ax.plot(x_pred, y_pred, z_pred, label = f'{cond} predicted')
+    #                 ax.plot(x_data, y_data, z_data, label = f'{cond} actual')
+    #                 rank_errors.append(mse(dmd.data, preds))
+    #             delay_errors[rank] = rank_errors
+    #             ax.set_title(f'Trajectories for Rank {rank}')
+    #             ax.set_xlabel('PC 1')
+    #             ax.set_ylabel('PC 2')
+    #             ax.legend()
+    #         plt.tight_layout()
+    #         plt.savefig(f'{pca_dir}/DMDProjections_{monkey}_{cortex}_delays{n_delays}.png')
+    #         plt.close()
+    #         error_df = pd.DataFrame(data=delay_errors, index=list(condition_map[cortex].keys()))
+    #         error_df.style.format(precision = 3)
+    #         err_fig = plt.figure(figsize=(5,2))
+    #         err_ax = plt.subplot(111, frame_on=False)
+    #         err_ax.set_xticks([])
+    #         err_ax.xaxis.set_label_position('top')
+    #         err_ax.set_yticks([])
+    #         pd.plotting.table(err_ax, error_df, loc='center')
+    #         plt.title(f'DMD MSE Error for Monkey {monkey}, {cortex}, N_delays = {n_delays}')
+    #         plt.savefig(f'{pca_dir}/DMDErrors_{monkey}_{cortex}_delays{n_delays}.png', dpi=300, bbox_inches='tight')
+    #         plt.close()
             # fig_sim = plt.figure()
             # sns.heatmap(similarities, vmax=.01)
             # plt.xticks([0.5,1.5,2.5,3.5], labels=list(condition_map[cortex].keys()))
@@ -572,6 +601,9 @@ for cortex in cortex_map.keys():
             # plt.title(f'{cortex} Clustering')
             # plt.savefig(f'{pca_dir}/DMDClustering_{cortex}_delays{n_delays}_rank{rank}.png')
             # plt.close()
+for m_name, monkey in monkeys.items():
+    monkey.save_monkey()
+    print(f'Saving Monkey {m_name}')
 
 full_angle_matrix = torch.empty(n_cort, n_cort*n_angles)
 for c_i, cort in enumerate(full_angles.keys()):

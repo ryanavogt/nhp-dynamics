@@ -50,13 +50,46 @@ def gen_psth(spiketimes, binsize, window, neurons = 1):
     spxtimes = np.sort(spiketimes[:, 1])
     spxcounts = spiketimes[:, 0]
 
-
     for j in range(int(T)):
         temp = spxcounts[np.logical_and((window[0] + binsize * j) <= spxtimes,
                                         spxtimes < (window[0] + binsize * (j + 1)))]
         for neuron in range(neurons):
             psth[j+1, 1+neuron] = (temp==(neuron+1)).sum()
     return psth
+
+def trial_psth(spiketimes, trial_idcs, binsize, window, neurons = 1, default_trials = 25):
+    """
+    Generate Peristimulus Time Histogram from spike times
+    :param spiketimes: Times at which spike occurs (np array), zeroed at event start
+    :param binsize: Time width of bins (in ms) - Usually 1
+    :param window: Time steps for histogram (np array) - usually -1000:1000, step size 1
+    :return: list separate PSTHs for each trial
+    """
+    T = int((window.max() - window.min()) / binsize)
+    if (window.max() - window.min()) % binsize != 0:
+        T += 1
+    psth_list = []
+    init_idx = 0
+    temp_spikes = spiketimes
+    times = np.arange(window[0], window[0] + binsize * T + .001, binsize)
+    if len(trial_idcs)>0:
+        for idx in np.arange(np.min(trial_idcs), np.min(trial_idcs)+default_trials):
+            trial_mask = trial_idcs == idx
+            trial_spikes = spiketimes[trial_mask]
+            psth = np.zeros((T + 1, 1 + neurons))
+            psth[:, 0] = times
+            spxtimes = np.sort(trial_spikes[:, 1])
+            spxcounts = trial_spikes[:, 0]
+
+            for j in range(int(T)):
+                temp = spxcounts[np.logical_and((window[0] + binsize * j) <= spxtimes,
+                                                spxtimes < (window[0] + binsize * (j + 1)))]
+                for neuron in range(neurons):
+                    psth[j + 1, 1 + neuron] = (temp == (neuron + 1)).sum()
+            psth_list.append(psth[1:,1:].squeeze())
+    else:
+        psth_list = [np.zeros_like(times)[1:]]*default_trials
+    return psth_list
 
 def gen_sdf(psth, ftype, w, bin_size = 1, varargin = None, multi_unit = True):
     """
