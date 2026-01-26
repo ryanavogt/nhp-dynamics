@@ -174,7 +174,6 @@ else:
             all_sdf_dict[region_key][event] = area_sdf
             event_max_rate = np.max(area_sdf, axis=1)
             area_max_rate[area_label] = np.maximum(event_max_rate, area_max_rate[area_label])
-
     with open(all_sdf_filename, 'wb') as sdf_file:
         pkl.dump(all_sdf_dict, sdf_file)
     with open(max_rate_filename, 'wb') as max_rate_file:
@@ -252,6 +251,17 @@ with open(all_sdf_filename, 'rb') as all_sdf_filename:
 with open(max_rate_filename, 'rb') as max_rate_file:
     area_max_rate = pkl.load(max_rate_file)
 
+area_merged_rates = {'M1':None, 'PMd':None, 'PMv':None}
+for area_label in area_max_rate.keys():
+    region, orient = area_label.split('_')
+    lat, region = region[0], region[1:]
+    area_max = area_max_rate[area_label]
+    if area_merged_rates[region] is None:
+        area_merged_rates[region] = np.zeros_like(area_max)
+    new_maxes = np.max(np.stack([area_max, area_merged_rates[region]]), axis=0)
+    area_merged_rates[region] = new_maxes
+
+
 for area_label in area_summary_dict.keys():
     max_rate_mask = {}
     full_window = np.arange(-1000, 1000+binsize, binsize)
@@ -276,7 +286,7 @@ for area_label in area_summary_dict.keys():
     # event_neuron_max[region_key] = event_neuron_peaks == area_max_rate[region_key]
     # for idx, event in enumerate(events):
     #     event_peak_proportions[event] = np.average(event_neuron_max[region_key]==idx)
-    event_peaks = (event_neuron_peaks == area_max_rate[region_key])
+    event_peaks = (event_neuron_peaks == area_merged_rates[region])
     # event_peaks[-2] = np.logical_or(event_peaks[-2], event_peaks[-1])
     event_peak_proportions = np.average(event_peaks, axis=1)
     event_neuron_max[orient][region]['neurons'] = event_neuron_peaks.shape[1]
@@ -308,7 +318,7 @@ for orientation in event_neuron_max.keys():
     handles, labels = plt.gca().get_legend_handles_labels()
     f.legend(handles, labels, loc=(0.5, 0), ncols=2)
     # ax.legend(loc='upper left', ncols=3)
-    sns.move_legend(f, "lower center", bbox_to_anchor=(.5, -.06), ncol=3)
+    sns.move_legend(f, "lower center", bbox_to_anchor=(.5, -.1), ncol=3)
     axs[0].set_ylabel('Neurons (%)')
     f.suptitle(f'Epoch of Max Discharge, {orientation.capitalize()}')
     sns.despine()
@@ -371,16 +381,20 @@ for orientation in modulation_dict.keys():
                 hand_mod.append(modulation)
                 offset = width*multiplier
                 mod_perc = np.average(modulation, axis=1)
-                max_height = 100
+                max_height = 50
                 rects = ax.bar(x+offset, mod_perc*100, width, bottom=bar_base, label=f'{side}, {mod_val}')
                 bar_base = mod_perc*100
             multiplier+= 1
         # Compute the share of modulated neurons across each hand
-        hand_nonSpecific = ~np.bitwise_xor(hand_mod[0], hand_mod[1])
-        ipsi_only = hand_mod[0] * ~hand_nonSpecific
-        contra_only = hand_mod[1] * ~hand_nonSpecific
+        ipsi_mod = np.bitwise_or(hand_mod[0], hand_mod[1]) #Merge up and down modulation for Ipsi
+        contra_mod = np.bitwise_or(hand_mod[2], hand_mod[3]) #Merge up and down modulation for Contra
+        hand_nonSpecific = ~np.bitwise_xor(ipsi_mod, contra_mod)
+        both_mod = ipsi_mod*contra_mod[1]
+        none_mod = ~ipsi_mod[0]*~contra_mod[1]
+        ipsi_only = ipsi_mod * ~hand_nonSpecific
+        contra_only = contra_mod * ~hand_nonSpecific
         hand_use_mod[orientation][region] = {'Ipsilateral': ipsi_only, 'Contralateral': contra_only,
-                                             'Hand non-specific': hand_nonSpecific}
+                                             'Hand non-specific': both_mod}
         ax.set_ylabel('Neurons(%)')
         ax.set_ylim([0, max_height])
         ax.set_xlabel('Epochs')
@@ -388,7 +402,8 @@ for orientation in modulation_dict.keys():
         ax.set_xticks(x + width * (multiplier - 1) / 2, [e.split(' ')[0] for e in list(epoch_window_map.keys())[1:]])
         # ax.legend(loc='upper left', ncols=3)
     handles, labels = plt.gca().get_legend_handles_labels()
-    f.legend(handles, labels, loc = (0.5, 0), ncols=4)
+    f.legend(handles, labels, loc = (0.5, -0.05), ncols=4)
+    plt.tight_layout()
     sns.move_legend(f, "lower center", bbox_to_anchor=(.5, -.1), ncol=4)
     sns.despine()
     f.suptitle(f'Modulation by Epoch, {orientation.capitalize()}')
@@ -413,8 +428,8 @@ for orientation in modulation_dict.keys():
         ax.set_title(f'{region}')
         ax.set_xticks(x + width * (multiplier - 1) / 2, [e.split(' ')[0] for e in list(epoch_window_map.keys())[1:]])
     handles, labels = plt.gca().get_legend_handles_labels()
-    f.legend(handles, labels, loc=(0.5, 0), ncols=3)
-    sns.move_legend(f, "lower center", bbox_to_anchor=(.5, -.06), ncol=3)
+    f.legend(handles, labels, loc=(0.5, -.1), ncols=3)
+    sns.move_legend(f, "lower center", bbox_to_anchor=(.5, -.1), ncol=3)
     axs[0].set_ylabel('Epoch Modulated Neurons (%)')
     f.suptitle(f'Modulation by Hand Used, {orientation.capitalize()}')
     sns.despine()

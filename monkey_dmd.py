@@ -119,17 +119,25 @@ for cortex in ['M1', 'PMv', 'PMd']:
     tick_list = []
     monkey_list= []
     similarity_matrix = []
+    similarity_vars_matrix = []
     for condition in sim_dict.keys():
         if cortex not in condition:
             continue
         sims = np.vstack([d[0] for d in list(sim_dict[condition].values())])
+        vars = np.vstack([d[1] for d in list(sim_dict[condition].values())])
         similarity_matrix.append(sims)
+        similarity_vars_matrix.append(vars)
         monkey, cort, lateral, orient = condition.split('_')
         tick_label = f'{lat_map[lateral]}-{orient[:4]}'
         tick_list.append(tick_label)
         monkey_list.append(monkey)
     monkey_list = np.vstack(monkey_list)
     similarity_matrix = np.hstack(similarity_matrix)
+    errs_matrix = np.clip(np.hstack(similarity_vars_matrix)/similarity_matrix, a_min=None, a_max=1)
+    x_centers = np.arange(0, errs_matrix.shape[0])
+    y_centers = np.arange(0, errs_matrix.shape[0])
+    X_centers, Y_centers = np.meshgrid(x_centers, y_centers)
+
     plt.figure(figsize=(8,8))
     ax = plt.gca()
     im = plt.imshow(similarity_matrix)
@@ -137,12 +145,13 @@ for cortex in ['M1', 'PMv', 'PMd']:
         monkey_idcs = np.where(monkey_list==monkey)[0]
         plt.text(-3, np.average(monkey_idcs)+1, f'Monkey {monkey}',
                  rotation='vertical', horizontalalignment='center', verticalalignment='bottom')
-        plt.text(np.average(monkey_idcs)+1, similarity_matrix.shape[0]+2, f'Monkey {monkey}',
+        plt.text(np.average(monkey_idcs), similarity_matrix.shape[0]+2, f'Monkey {monkey}',
                  rotation='horizontal', horizontalalignment='center', verticalalignment='top')
         box_length = max(monkey_idcs)-min(monkey_idcs)+1
         box = Rectangle((min(monkey_idcs)-.5,min(monkey_idcs)-.5), width=box_length, height=box_length,
                              edgecolor=monkey.lower(), facecolor='none', linewidth=3)
         ax.add_patch(box)
+    ax.errorbar(X_centers.flatten(), Y_centers.flatten(), yerr = errs_matrix.flatten()/2, ls='none', capsize=4)
     ax.set_xticks(np.arange(0, len(tick_list)))
     ax.set_yticks(np.arange(0, len(tick_list)))
     ax.set_title(f'{cortex} Similiarity Matrix')
