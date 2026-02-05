@@ -87,35 +87,48 @@ def raster_plot(neuron_list, region_spikes, event_list, epoch_window_map, condit
                                                   color=condition_colors[condition], alpha=0.1)
                 ax.add_patch(cond_rect)
                 cond_idx = cond_max
+                # print(f'{condition}: {cond_inds}')
         ax.invert_yaxis()
         ordered_spikes = [neuron_spikes[i] for i in cond_order]
         ax.eventplot(ordered_spikes, color='k')
         if conditions is not None:
             cond_idx = 0
+            max_sdf = 0
+            cond_sdfs = {}
             for cond_i, condition in enumerate(condition_colors.keys()):
                 cond_mask = cond_masks[condition]
                 trial_count = len(np.where(cond_mask)[0])
                 cond_min = cond_idx
                 cond_max = cond_min + trial_count
                 cond_idx = cond_max
+                # print(f'{condition}: {cond_min}:{cond_max}')
                 if sdf:
                     cond_spike_list = []
-                    for i in range(cond_mask.shape[0]):
-                        if cond_mask[i]:
-                            cond_spike_list.append(ordered_spikes[i])
+                    # for i in range(cond_mask.shape[0]):
+                    #     if cond_mask[i]:
+                    for i in cond_order[cond_min:cond_max]:
+                        cond_spike_list.append(neuron_spikes[i])
                     spike_input = np.concatenate(cond_spike_list)
                     psth_input = np.ones((spike_input.shape[0],2))
                     psth_input[:,1] = spike_input
                     cond_psth = gen_psth(psth_input, binsize=binsize, window=np.array(window))
                     cond_sdf, _ = gen_sdf(cond_psth[:, 1:], w=kernel_width, bin_size=binsize, ftype='Gauss',
                                           multi_unit=False)
-                    sdf_scaled = -cond_sdf[:,0,0]*(cond_max-cond_min)*2 + cond_max# - (cond_max-cond_min)/8
-                    ax.plot(cond_psth[:,0],sdf_scaled,color=condition_colors[condition])
+                    cond_sdf = cond_sdf[0]
+                    if max_sdf<cond_sdf.max():
+                        max_sdf = cond_sdf.max()
+                    cond_sdfs[condition] = {'sdf': cond_sdf, 'cond_max': cond_max, 'cond_min': cond_min}
+                    # sdf_scaled = -cond_sdf[:,0,0]*(cond_max-cond_min)/cond_sdf[:,0,0].max() + cond_max# - (cond_max-cond_min)/8
+                    # ax.plot(cond_psth[:,0],sdf_scaled,color=condition_colors[condition])
+            for cond_i, condition in enumerate(condition_colors.keys()):
+                cond_vals = cond_sdfs[condition]
+                cond_sdf, cond_max, cond_min = cond_vals.values()
+                sdf_scaled = -cond_sdf[0, :] * (cond_max - cond_min)*0.9 / max_sdf + cond_max
+                ax.plot(cond_psth[:, 0], sdf_scaled, color=condition_colors[condition])
+                bbox= None
                 if indices is not None:
                     if sig_neuron[cond_i]:
                         bbox = dict(boxstyle="square", fc = 'none', ec="black", lw=2, pad=0.1)
-                else:
-                    bbox = None
                 ax.annotate(xy=(window[1] - 5, cond_min + 0.5), rotation=270, ha='right', va='top', text=condition,
                             color=condition_colors[condition],
                             alpha=0.8, fontsize=9.5, bbox=bbox)
@@ -136,6 +149,7 @@ merged_count = len(monkey_name_map.keys())
 
 pca_dir = f'{summary_dir}/PCA_b{binsize}_k{kernel_width}'
 indices_filename = f'{pca_dir}_pcIndices_merged{merged_count}.p'
+joint_indices_filename = f'{pca_dir}_pcIndicesJoint_merged{merged_count}.p'
 
 epoch_window_map = {'Cue':      {'event': 'trialRewardDrop', 'window': [-200,   200]},
                    'Grasp On':  {'event': 'trialGraspOn',    'window': [-100,   500]}}
@@ -169,9 +183,11 @@ with open(condition_file_name, 'rb') as condition_file:
     all_conditions = pkl.load(condition_file)
 with open(indices_filename, 'rb') as indices_file:
     all_indices = pkl.load(indices_file)
+with open(joint_indices_filename, 'rb') as joint_indices_file:
+    joint_indices = pkl.load(joint_indices_file)
 
 cond_map = {0:'ipsi-hori', 1:'ipsi-vert', 2:'contra-hori', 3:'contra-vert'}
-make_full_fig = False
+make_full_fig = True
 for region in selected_neurons.keys():
     print(f'{region}')
     region_conditions = all_conditions[region]

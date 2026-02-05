@@ -112,7 +112,7 @@ def gen_sdf(psth, ftype, w, bin_size = 1, varargin = None, multi_unit = True):
     else:
         sdf = psth[:, -1]
         sdf = torch.Tensor(sdf).unsqueeze(-1).unsqueeze(-1)
-    sdf, kernel = f_map[ftype](sdf, w, bin_size)
+    sdf, kernel = f_map[ftype](sdf.transpose(2, 0), w, bin_size)
     return sdf, kernel
 
 def gauss(sdf, w, bin_size=1):

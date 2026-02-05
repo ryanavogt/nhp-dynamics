@@ -44,8 +44,8 @@ if not os.path.exists(summary_dir):
 lat_map = {'c':'contralateral', 'i':'ipsilateral'}
 hand_list = ['R', 'L']
 events = ['trialRewardDrop', 'trialGraspOn']
-binsize = 10
-kernel_width = 200
+binsize = 5
+kernel_width = 25
 load_override_preprocess = False
 load_override = False
 
@@ -125,6 +125,7 @@ Generate plots of the max spiking rates for each area, side, and orientation.
 Scale the rate to the max rate for contralateral side. Apply that scale to ipsilateral side.
 """
 window_range = np.array([-1000, 1000])
+area_kernel = 25
 skip = False
 area_max_rate = {}
 all_sdf_filename = f'{summary_dir}/sdfDict_merged{len(monkey_name_map.keys())}_bin{binsize}_k{kernel_width}.p'
@@ -163,16 +164,16 @@ else:
                 neuron_spikes[0, :] = 1
                 neuron_psth = gen_psth(neuron_spikes.T, binsize=binsize, window=window_range, neurons=1)
                 psth_list.append(neuron_psth)
-                neuron_sdf, _ = gen_sdf(neuron_psth, w=kernel_width, bin_size=binsize, ftype='Gauss', multi_unit=False)
+                neuron_sdf, _ = gen_sdf(neuron_psth, w=area_kernel, bin_size=binsize, ftype='Gauss', multi_unit=False)
                 peak_location = neuron_sdf[:].argmax()
                 neuron_peak_times[neuron_idx] = peak_location
                 time_scale = neuron_psth[:,0]
                 sdf_list.append(neuron_sdf[:, 0].T)
             peak_order = np.argsort(neuron_peak_times)
             peak_order_dict[area_label][event] = peak_order
-            area_sdf = np.vstack(sdf_list)
+            area_sdf = np.hstack(sdf_list)
             all_sdf_dict[region_key][event] = area_sdf
-            event_max_rate = np.max(area_sdf, axis=1)
+            event_max_rate = np.max(area_sdf, axis=0)
             area_max_rate[area_label] = np.maximum(event_max_rate, area_max_rate[area_label])
     with open(all_sdf_filename, 'wb') as sdf_file:
         pkl.dump(all_sdf_dict, sdf_file)
@@ -202,7 +203,7 @@ for area_label in area_summary_dict.keys():
         neuron_count = area_summary_dict[area_label][event]['neurons']
         area_sdf = all_sdf_dict[area_label][event]
         plot_dict[orientation][region][event][lat] = area_sdf
-        max_dict[orientation][region][event][lat] = {'max':area_sdf.max(axis=1), 'order': peak_order[event]}
+        max_dict[orientation][region][event][lat] = {'max':area_sdf.max(axis=0), 'order': peak_order[event]}
 
 skip_plots = True # To save time
 neuron_plot_dir = f'{summary_dir}/Neuron Plots_merged{len(monkey_name_map.keys())}_bin{binsize}_kernel{kernel_width}'
@@ -261,7 +262,6 @@ for area_label in area_max_rate.keys():
     new_maxes = np.max(np.stack([area_max, area_merged_rates[region]]), axis=0)
     area_merged_rates[region] = new_maxes
 
-
 for area_label in area_summary_dict.keys():
     max_rate_mask = {}
     full_window = np.arange(-1000, 1000+binsize, binsize)
@@ -280,8 +280,8 @@ for area_label in area_summary_dict.keys():
         event = epoch_window_map[epoch]['event']
         event_window = epoch_window_map[epoch]['window']
         event_mask = (full_window>event_window[0]) * (full_window<=event_window[1])
-        area_sdf = all_sdf_dict[region_key][event][:, event_mask]
-        event_spike_maxes[region_key][epoch] = area_sdf.max(axis=1)
+        area_sdf = all_sdf_dict[region_key][event][event_mask]
+        event_spike_maxes[region_key][epoch] = area_sdf.max(axis=0)
     event_neuron_peaks = np.vstack(list(event_spike_maxes[region_key].values()))
     # event_neuron_max[region_key] = event_neuron_peaks == area_max_rate[region_key]
     # for idx, event in enumerate(events):
@@ -334,19 +334,31 @@ full_window = np.arange(-1000, 1000+binsize, binsize)
 baseline_epoch = 'Pre-cue'
 base_window= epoch_window_map[baseline_epoch]['window']
 baseline_mask = (full_window>base_window[0]) * (full_window<base_window[1])
+event_masks = {}
+for event in ['Cue', 'Grasp On']:
+    event_window = epoch_window_map[event]['window']
+    event_masks[event] = (full_window>event_window[0]) * (full_window<event_window[1])
 p_score = 0.05
 modulation_dict = {}
 up_down_modulation = {}
+tVals_dict = {}
 for region in all_sdf_dict.keys():
+    event_max_slopes[region] = {}
     area, orientation = region.split('_')
     lat, area = area[0], area[1:]
     if orientation not in modulation_dict.keys():
         modulation_dict[orientation] = {}
         up_down_modulation[orientation] = {}
-    baseline_sdf = all_sdf_dict[region][epoch_window_map[baseline_epoch]['event']][:, baseline_mask]
+        tVals_dict[orientation] = {}
+    baseline_sdf = all_sdf_dict[region][epoch_window_map[baseline_epoch]['event']][baseline_mask]
     event_modulations = []
     event_tVals = []
+    event_max_slopes = []
     for event in all_sdf_dict[region].keys():
+        event_sdf = all_sdf_dict[region][event][event_masks[event_map[event]]]
+        event_slopes = event_sdf[1:]-event_sdf[:1]
+        event_max_slopes.append({'max': (event_slopes.max(axis=0), event_slopes.argmax(axis=0)),
+                                            'min': event_slopes.min(axis=0)})
         mod_tuple = t_test(baseline_sdf, all_sdf_dict[region][event], q=p_score/2, paired=True)
         event_modulations.append(mod_tuple[0])
         event_tVals.append(mod_tuple[1])
@@ -356,8 +368,10 @@ for region in all_sdf_dict.keys():
     if area not in modulation_dict[orientation].keys():
         modulation_dict[orientation][area] = {}
         up_down_modulation[orientation][area] = {}
-    modulation_dict[orientation][area][lat_map[lat]] = {'modulations':event_modulations, 'tVals':event_tVals}
+        tVals_dict[orientation][area] = {}
+    modulation_dict[orientation][area][lat_map[lat]] = {'modulations':event_modulations, 'tVals':event_tVals, 'event_slopes':event_max_slopes}
     up_down_modulation[orientation][area][lat_map[lat]] = np.stack([event_modulations*event_tVals<0, event_modulations*event_tVals >0])
+    tVals_dict[orientation][area][lat_map[lat]] = event_tVals
 
 """
 Plot modulation by epoch and compute modulation by hand used
@@ -365,12 +379,17 @@ Plot modulation by epoch and compute modulation by hand used
 hand_use_mod = {}
 for orientation in modulation_dict.keys():
     f, axs = plt.subplots(nrows=1, ncols=3, figsize=(12, 4), sharey='row')
+    tval_f, tval_axs = plt.subplots(nrows=1, ncols=3, figsize=(12, 4), sharey='row')
     hand_use_mod[orientation] = {}
+    t_max = 0
+    t_min = 0
     for idx, region in enumerate(up_down_modulation[orientation].keys()):
         hand_use_mod[orientation][region] = {}
         ax = axs[idx]
+        tval_ax = tval_axs[idx]
         multiplier = 0
         hand_mod = []
+        tVal_list = []
         for side, mod_tuple in up_down_modulation[orientation][region].items():
             bar_base = 0
             for i, mod_val in enumerate(['down', 'up']):
@@ -384,30 +403,71 @@ for orientation in modulation_dict.keys():
                 max_height = 50
                 rects = ax.bar(x+offset, mod_perc*100, width, bottom=bar_base, label=f'{side}, {mod_val}')
                 bar_base = mod_perc*100
+            if t_max < np.nanmax(tVals_dict[orientation][region][side]):
+                t_max = np.nanmax(tVals_dict[orientation][region][side])
+            if t_min > np.nanmin(tVals_dict[orientation][region][side]):
+                t_min = np.nanmin(tVals_dict[orientation][region][side])
+            tVal_list.append(tVals_dict[orientation][region][side])
             multiplier+= 1
+        # ipsi_tVals, contra_tVals = tVal_list
         # Compute the share of modulated neurons across each hand
         ipsi_mod = np.bitwise_or(hand_mod[0], hand_mod[1]) #Merge up and down modulation for Ipsi
         contra_mod = np.bitwise_or(hand_mod[2], hand_mod[3]) #Merge up and down modulation for Contra
         hand_nonSpecific = ~np.bitwise_xor(ipsi_mod, contra_mod)
-        both_mod = ipsi_mod*contra_mod[1]
-        none_mod = ~ipsi_mod[0]*~contra_mod[1]
+        both_mod = ipsi_mod*contra_mod
+        none_mod = ~ipsi_mod*~contra_mod
         ipsi_only = ipsi_mod * ~hand_nonSpecific
         contra_only = contra_mod * ~hand_nonSpecific
         hand_use_mod[orientation][region] = {'Ipsilateral': ipsi_only, 'Contralateral': contra_only,
                                              'Hand non-specific': both_mod}
+        all_mods = {'ipsi':ipsi_only, 'contra':contra_only, 'both':both_mod, 'none':none_mod}
+        mod_color_map = {'ipsi':'tab:blue', 'contra':'tab:orange', 'both':'tab:green', 'none':'tab:gray'}
+        event_list = ['Cue', 'Grasp']
+        tick_list = []
+        tick_label_list = []
+        for i, event in enumerate(event_list):
+            for j, side in enumerate(up_down_modulation[orientation][region].keys()):
+                for k, mod_type in enumerate(all_mods.keys()):
+                    if mod_type == 'none':
+                        continue
+                    event_mod = tVal_list[j][i][all_mods[mod_type][i]]
+                    tick = i-.2+.4*j-.105+.07*k
+                    tick_list.append(tick)
+                    tick_label_list.append(mod_type)
+                    tval_ax.scatter(np.ones_like(event_mod)*tick, event_mod, label=mod_type, c=mod_color_map[mod_type], alpha=0.5)
+        for i, event in enumerate(event_list):
+            tval_ax.annotate(text=event, xy=(i, t_max + 1), ha='center', va='bottom')
+            for j, hand in enumerate(['Ipsi', 'Contra']):
+                tval_ax.annotate(text=hand, xy=(i-.2+.4*j, t_min-.5), ha='center', va='top')
+        tval_ax.set_xticks(tick_list, labels=tick_label_list, rotation='vertical')
+        tval_ax.set_ylabel('t Value')
+        tval_ax.set_title(f'{region}')
+        tval_ax.plot([-1, 2], [0, 0], 'k--')
+        tval_ax.set_xlim([-.5, 1.5])
+        tval_ax.set_ylim([t_min-2, t_max+2])
+        tval_ax.set_xlabel('Modulation')
         ax.set_ylabel('Neurons(%)')
         ax.set_ylim([0, max_height])
         ax.set_xlabel('Epochs')
         ax.set_title(f'{region}')
         ax.set_xticks(x + width * (multiplier - 1) / 2, [e.split(' ')[0] for e in list(epoch_window_map.keys())[1:]])
         # ax.legend(loc='upper left', ncols=3)
-    handles, labels = plt.gca().get_legend_handles_labels()
+    handles, labels = plt.figure(f).get_axes()[-1].get_legend_handles_labels()
     f.legend(handles, labels, loc = (0.5, -0.05), ncols=4)
     plt.tight_layout()
     sns.move_legend(f, "lower center", bbox_to_anchor=(.5, -.1), ncol=4)
     sns.despine()
     f.suptitle(f'Modulation by Epoch, {orientation.capitalize()}')
     plt.savefig(f'{summary_dir}/Modulation_merged{len(monkey_name_map.keys())}_{orientation}.png', bbox_inches='tight')
+
+    plt.figure(tval_f)
+    t_handles, t_labels = tval_f.get_axes()[-1].get_legend_handles_labels()
+    # tval_f.legend(t_handles, t_labels, loc=(0.5, -0.05), ncols=4)
+    plt.tight_layout()
+    # sns.move_legend(tval_f, "lower center", bbox_to_anchor=(.5, -.1), ncol=4)
+    sns.despine()
+    f.suptitle(f'T Value by Epoch, {orientation.capitalize()}')
+    plt.savefig(f'{summary_dir}/tVals_merged{len(monkey_name_map.keys())}_{orientation}.png', bbox_inches='tight')
 
 width = 0.3
 for orientation in modulation_dict.keys():
