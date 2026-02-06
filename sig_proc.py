@@ -112,7 +112,7 @@ def gen_sdf(psth, ftype, w, bin_size = 1, varargin = None, multi_unit = True):
     else:
         sdf = psth[:, -1]
         sdf = torch.Tensor(sdf).unsqueeze(-1).unsqueeze(-1)
-    sdf, kernel = f_map[ftype](sdf.transpose(2, 0), w, bin_size)
+    sdf, kernel = f_map[ftype](sdf.transpose(0, 0), w, bin_size)
     return sdf, kernel
 
 def gauss(sdf, w, bin_size=1):
@@ -186,3 +186,9 @@ def t_test(sdf1, sdf2, q=0.025, paired = False):
         # modulation[neuron_idx] = (lower_tail < q) or (upper_tail <q)
         modulation[neuron_idx] = sig_level < q
     return modulation, t_vals
+
+def center_sdf(sdf):
+    mean = sdf.mean(dim=1, keepdim=True)
+    centered = sdf - mean.repeat(1, sdf.shape[1])
+    square = centered @ centered.T
+    return {'square':square, 'centered':centered}

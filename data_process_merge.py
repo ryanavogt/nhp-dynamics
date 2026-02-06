@@ -31,7 +31,7 @@ monkey_name_map = {'G':'Green', 'R':'Red', 'Y':'Yellow', 'B':'Blue'}
 event_map = {'trialRewardDrop': 'Cue', 'trialGraspOn':'Grasp On'}
 # Define the reference events and time window defining each epoch
 epoch_window_map = {'Cue':      {'event': 'trialRewardDrop', 'window': [-200,   200]},
-                   'Grasp On':  {'event': 'trialGraspOn',    'window': [-100,   900]}}
+                   'Grasp On':  {'event': 'trialGraspOn',    'window': [-100,   500]}}
 
 #Define directories of data
 data_dir = 'Data/Sorted_Inactivation'
