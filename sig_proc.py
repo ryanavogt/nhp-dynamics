@@ -171,13 +171,13 @@ def t_test(sdf1, sdf2, q=0.025, paired = False):
     if paired:
         s_pop = np.sqrt(((n1-1)*s1**2 + (n2-1)*s2**2)/(n1+n2-2))
         s_mean = s_pop*np.sqrt(1/n1+1/n2)
-        t_vals = (m1-m2)/s_mean
+        t_vals = (m2-m1)/s_mean
         df = np.ones_like(m1)*(n1+n2-2)
     else:
         v1, v2 = s1**2/n1, s2**2/n2
         # if v1.min()==0 or v2.min() ==0:
         #     print(f'V1 min: {v1.min()}, V2 min:{v2.min()}')
-        t_vals = (m1-m2)/np.sqrt(v1 + v2)
+        t_vals = (m2-m1)/np.sqrt(v1 + v2)
         df = (v1+v2)**2/(1/(n1-1) *v1**2 + 1/(n2-1)*v2**2)
     modulation = np.zeros(len(m1), dtype=bool)
     for neuron_idx in range(len(m1)):

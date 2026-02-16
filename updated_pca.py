@@ -218,7 +218,7 @@ binsize = 5
 all_x = np.arange(0, current_time, binsize)
 kernel_width = 25
 full_window = np.arange(-1000, 1000+binsize, binsize)
-new_popdict = True
+new_popdict = False
 pca_dir = f'{summary_dir}/PCA_b{binsize}_k{kernel_width}'
 
 durs_file_name = f'{summary_dir}/durs_list_merged{len(monkey_name_map.keys())}.p'
@@ -312,8 +312,10 @@ else:
 pca_overwrite = True
 cortex_map = merged_pop_dict['cortex_map']
 merged_pop_sdf = merged_pop_dict['sdf']
+merged_pop_psth = merged_pop_dict['psth']
 condition_map = merged_pop_dict['condition_map']
-n_angles = 5
+n_dims = 5 #Dimension of subspaces on which to compute angles
+n_angles = 1 #Number of angles to plot (Should be 1)
 full_angles = {}
 n_cort = len(cortex_map.keys())-1
 cortex_colors = {'M1':'b', 'PMd':'r', 'PMv':'g'}
@@ -338,13 +340,15 @@ monkeys = {}
 cond_data = {}
 cond_neuron_dict = {}
 cortex_angles = {}
+cos = torch.nn.CosineSimilarity(dim=0, eps=1e-8)
 for cortex in cortex_map.keys():
     monkey_indices = all_monkey_indices[cortex]
     del monkey_indices['count']
     monkey_indices['All'] = np.arange(0, max([e[-1] for e in list(monkey_indices.values())])+1)
     pca_filename = f'{pca_dir}/PCA_merged{len(monkey_name_map.keys())}_{cortex}_b{binsize}_k{kernel_width}.p'
     cort = cortex_map[cortex]
-    sdf = merged_pop_sdf[cort[0]:cort[1]] #cortex sdf
+    sdf = merged_pop_sdf[cort[0]:cort[1]]
+    psth = merged_pop_psth[cort[0]:cort[1]]#cortex sdf
     for monkey in monkey_indices.keys():
         if monkey == 'count':
             continue
@@ -356,7 +360,7 @@ for cortex in cortex_map.keys():
         monkey_obj.get_savedir(summary_dir)
         cortex_sdf = monkey_obj.get_sdf(sdf, cortex)
         cortex_svd = monkey_obj.get_svd(cortex)
-        monkey_obj.get_trial_psth(sdf, cortex)
+        monkey_obj.get_trial_psth(psth, cortex)
 
         V_cort = cortex_svd['Full']['V']
         S_cort = cortex_svd['Full']['S']
@@ -368,13 +372,25 @@ for cortex in cortex_map.keys():
         cond_neuron_dict[monkey] = {}
         cond_data[monkey] = []
         cortex_angles[monkey] = {}
+        split_Vs = {}
         monkey_index = np.array(monkey_indices[monkey])
         if monkey != 'All':
             m_neurons = len(monkey_index)
         else:
             m_neurons = max(cort)
         for idx, (cond, c_ind) in enumerate(condition_map[cortex].items()):
-            cond_sdf = sdf[c_ind[0]:c_ind[1]][monkey_index]
+            cond_psth = monkey_obj.cortices[cortex]['psth'][cond]
+            split_psth = torch.tensor_split(cond_psth, 2, dim=1)
+            split_sdf = []
+            split_V = []
+            for sub_psth in split_psth:
+                sub_sdf, _ = gen_sdf(sub_psth.sum(dim=1).T, w=kernel_width, bin_size=binsize, ftype='Gauss', multi_unit=True)
+                split_sdf.append(sub_sdf[:, 0])
+                split_sdf_square = center_sdf(torch.Tensor(sub_sdf[:, 0]))['square']
+                U, S, V = torch.linalg.svd(split_sdf_square, full_matrices=False)
+                split_V.append(V.T)
+            split_Vs[cond] = split_V
+            cond_sdf = cortex_sdf[cond]
             cond_svd = cortex_svd[cond]
             V_cond = cond_svd['V']
             cond_pc_neurons = V_cond[:, :3].abs().sort(dim=0, descending=True)
@@ -383,20 +399,21 @@ for cortex in cortex_map.keys():
             cond_data[monkey].append(cond_sdf.T)
             cond_event_means = {}
             cond_event_stds = {}
-            # (cond_pc_neurons.values ** 2 / ((V[c_ind[0]:c_ind[1], :3] ** 2).sum(dim=0)))
             cond_neuron_dict[monkey][cond] = {'sdf': cond_sdf, 'indices': cond_pc_neurons.indices}
-            # cond_ax = axs[idx]
             prop_cycle = plt.rcParams['axes.prop_cycle']
             clrs = prop_cycle.by_key()['color']
 
-            var_plot_pcs = 'all'
+            # var_plot_pcs = 'all'
+            var_plot_pcs = 20
             cond_cov = cortex_svd[cond]['cov']
             cond_var_sum = torch.cumsum(torch.diagonal(V_cond.T @ cond_cov @ V_cond), dim=0)
             cond_var_explained = cond_var_sum / cond_var_sum.max()
-            cond_var_len = cond_var_explained.shape[0]
+            cortex_neurons = monkey_obj.cortices[cortex]['neurons']
             if var_plot_pcs == 'all':
-                var_plot_pcs = cond_var_len
-            ax_var.scatter(np.arange(1, var_plot_pcs + 1), cond_var_explained[:var_plot_pcs], label=cond[:6])
+                var_plot_pcs = cortex_neurons
+            else:
+                pcs_plotted = min(cortex_neurons, var_plot_pcs)
+            ax_var.scatter(np.arange(1, pcs_plotted + 1), cond_var_explained[:pcs_plotted], label=cond[:6])
             for event in event_marker_idx.keys():
                 mean_idx = event_marker_idx[event]['mean']
                 std_idx = event_marker_idx[event]['std']
@@ -414,63 +431,14 @@ for cortex in cortex_map.keys():
                 em_x, em_y, em_z = cond_event_means[event]
                 ax3.scatter(em_x, em_y, em_z, marker=event_shapes[event_map[event]], c='k', alpha=0.4, s=100)
                 ax2.scatter(em_x, em_y, marker=event_shapes[event_map[event]], c='k', alpha=0.4, s=100)
-            # ax2a.plot(y, z, label=cond)
-            angles = {}
-            cortex_angles[monkey][cond] = {'v': V_cond, 'angles': angles}
-        mean_plot = True
-        mean_neurons = 5
-        if not mean_plot:
-            cond_legend_elements = [Line2D([0], [0], color='gray', marker=cond_shapes[c], markerfacecolor='gray',
-                                           ms=15, label=c) for c in condition_map[cortex].keys()]
-            mean_string = ''
-        else:
-            cond_legend_elements = []
-            mean_string = f', Mean over {mean_neurons} Neurons'
-        cort_sdf_fig = cond_neuron_plot(cond_neuron_dict[monkey], epoch_window_map, plot_neurons=mean_neurons,
-                                        legend_elements=cond_legend_elements, cond_shapes=cond_shapes, mean_plot=True)
-        # cort_sdf_fig.suptitle(f'SDF for {cortex}{mean_string}, {len(monkey_name_map.keys())} Monkeys', size='xx-large')
-        cort_sdf_fig.suptitle(f'SDF for {cortex}{mean_string}, Monkey {monkey}', size='xx-large')
-        plot_mean = ''
-        if mean_plot:
-            plot_mean += f'_mean{mean_neurons}'
-        cort_sdf_fig.tight_layout()
-        # cort_sdf_fig.savefig(f'{pca_dir}/{cortex}_merged{len(monkey_name_map.keys())}_{plot_mean}_SDF.png', bbox_inches='tight', dpi=200)
-        # cort_sdf_fig.savefig(f'{pca_dir}/{cortex}_monkey{monkey}{plot_mean}_SDF.png',
-        #                      bbox_inches='tight', dpi=200)
-        plt.close(cort_sdf_fig)
-        leg2 = ax3.legend(handles=legend_elements, labels=list(epoch_shapes.keys()) + list(event_shapes.keys()),
-                          ncols=2, loc='lower center')
-        sns.move_legend(ax3, 'upper center', ncols=2, bbox_to_anchor=(.5, -.1))
-        conds = len(cortex_angles[monkey].keys()) - 1
-        angle_matrix = torch.empty(conds, conds * n_angles)
-        for c_i, cond in enumerate(cortex_angles[monkey].keys()):
-            if c_i == 0:
-                continue
-            for c_j, o_cond in enumerate(cortex_angles[monkey][cond]['angles'].keys()):
-                angle_matrix[c_i - 1, c_j * min(n_angles, m_neurons):(c_j + 1) * min(n_angles, m_neurons)] = (
-                    torch.Tensor(cortex_angles[monkey][cond]['angles'][o_cond][:n_angles]))
-                # print(angle_matrix)
-        # angle_fig = plt.figure()
-        im = ax2a.pcolor(angle_matrix, cmap=mpl.colormaps['magma_r'],
-                         norm=colors.Normalize(vmin=0.2, vmax=1, clip=True))  # norm=colors.LogNorm(vmin=0.4, vmax = 1)
-        div = make_axes_locatable(ax2a)
-        cax = div.append_axes('right', size='5%', pad=0.05)
-        fig.colorbar(im, cax=cax, orientation='vertical')
-        ax2a.set_yticks(ticks=[0.5, 1.5, 2.5], labels=['ch', 'iv', 'cv'])
-        ax2a.set_xticks(ticks=[n_angles / 2, 3 * n_angles / 2, 5 * n_angles / 2], labels=['ih', 'ch', 'iv'])
-        ax2a.vlines([n_angles, 2 * n_angles], 0, 3, colors='w')
-        ax2a.hlines([1, 2], 0, conds * n_angles, colors='w')
-        # ax2a.colorbar(label='Cos Sim.')
-        ax2a.set_title(f'Principal Angles Between First {n_angles} PCs')
-        # plt.savefig(f'{pca_dir}/AngleMatrix_{cortex}.png', dpi = 300, bbox_inches= 'tight')
-
+        cond_list = list(condition_map[cortex].keys())
         var = S_cort.square()
         var_sum = torch.cumsum(var, 0)
-        ax_var.scatter(range(1, var_plot_pcs + 1), var_sum[:var_plot_pcs] / var_sum[-1], label='All', color='k')
+        ax_var.scatter(range(1, pcs_plotted + 1), var_sum[:pcs_plotted] / var_sum[-1], label='All', color='k')
         ax_var.set_xlabel('PC index')
         ax_var.set_ylabel('Variance Explained')
         ax_var.set_ylim([0, 1.05])
-        ax_var.legend(ncol=2, loc='right')
+        ax_var.legend(ncol=2, loc='lower right')
 
         ax2.set_title(f'Conditions plotted onto first 2 {cortex} PCs')
         # ax2a.set_title(f'Conditions plotted onto second 2 {cortex} PCs')
@@ -483,10 +451,81 @@ for cortex in cortex_map.keys():
         # ax2a.set_xlabel('PC 2')
         # ax2a.set_ylabel('PC 3')
         ax2.legend()
-        # fig.savefig(f'{pca_dir}/PCTraj3D_{cortex}_merged{len(monkey_name_map.keys())}.png', dpi = 300, bbox_inches= 'tight')
-        fig.savefig(f'{pca_dir}/PCTraj3D_{cortex}_monkey{monkey}_NEW.png', dpi=300, bbox_inches='tight')
+        for n_dims in [5]:
+            fig.delaxes(ax2a)
+            ax2a = fig.add_subplot(2, 2, 4)
+            for cond in cond_list:
+                angles = {}
+                V_cond = monkey_obj.cortices[cortex]['SVD'][cond]['V']
+                for o_cond in cond_list:
+                    V_ocond = monkey_obj.cortices[cortex]['SVD'][o_cond]['V']
+                    if o_cond == cond:
+                        Vs = split_Vs[cond]
+                        G = Vs[0][:,:n_dims].T@Vs[1][:,:n_dims]
+                    else:
+                        G = V_cond[:,:n_dims].T@V_ocond[:,:n_dims]
+                    alignment = torch.linalg.svdvals(G)
+                    angles[o_cond] = alignment
+                cortex_angles[monkey][cond] = {'v': V_cond, 'angles': angles}
+            mean_plot = True
+            mean_neurons = 5
+            if not mean_plot:
+                cond_legend_elements = [Line2D([0], [0], color='gray', marker=cond_shapes[c], markerfacecolor='gray',
+                                               ms=15, label=c) for c in condition_map[cortex].keys()]
+                mean_string = ''
+            else:
+                cond_legend_elements = []
+                mean_string = f', Mean over {mean_neurons} Neurons'
+            cort_sdf_fig = cond_neuron_plot(cond_neuron_dict[monkey], epoch_window_map, plot_neurons=mean_neurons,
+                                            legend_elements=cond_legend_elements, cond_shapes=cond_shapes, mean_plot=True)
+            cort_sdf_fig.suptitle(f'SDF for {cortex}{mean_string}, Monkey {monkey}', size='xx-large')
+            plot_mean = ''
+            if mean_plot:
+                plot_mean += f'_mean{mean_neurons}'
+            cort_sdf_fig.tight_layout()
+            plt.close(cort_sdf_fig)
+            leg2 = ax3.legend(handles=legend_elements, labels=list(epoch_shapes.keys()) + list(event_shapes.keys()),
+                              ncols=2, loc='lower center')
+            sns.move_legend(ax3, 'upper center', ncols=2, bbox_to_anchor=(.5, -.1))
+            conds = len(cortex_angles[monkey].keys())
+            angle_matrix = torch.empty(conds, conds * n_angles)
+            mean_matrix = torch.empty(conds, conds)
+            for c_i, cond in enumerate(cond_list):
+                for c_j, o_cond in enumerate(cond_list[:]):
+                    angle_matrix[c_i, c_j * min(n_angles, m_neurons):(c_j + 1) * min(n_angles, m_neurons)] = (
+                        torch.Tensor(cortex_angles[monkey][cond]['angles'][o_cond][:n_angles]))
+                    mean_matrix[c_i, c_j] = cortex_angles[monkey][cond]['angles'][o_cond][:1].mean()
+
+            im = ax2a.pcolor(angle_matrix, cmap=mpl.colormaps['magma_r'],
+                             norm=colors.Normalize(vmin=0.2, vmax=1, clip=True))
+            div = make_axes_locatable(ax2a)
+            cax = div.append_axes('right', size='5%', pad=0.05)
+            fig.colorbar(im, cax=cax, orientation='vertical')
+
+            ax2a.set_yticks(ticks=np.arange(conds)+.5, labels=[c[:3] for c in cond_list])
+            ax2a.set_xticks(ticks=(np.arange(conds)+.5)*n_angles, labels=[c[:3] for c in cond_list])
+            # ax2a.set_xticks(ticks=[n_angles / 2, 3 * n_angles / 2, 5 * n_angles / 2, 7 * n_angles / 2], labels=cond_list)
+            ax2a.vlines(n_angles*np.arange(conds)[1:], 0, conds, colors='w')
+            ax2a.hlines(np.arange(conds)[1:], 0, conds * n_angles, colors='w')
+            # ax2a.colorbar(label='Cos Sim.')
+            ax2a.set_title(f'Principal Angles for {n_dims}-dim PC Subspaces')
+            bbox_props = dict(facecolor='black', alpha=0.4, edgecolor='none', pad=0.1)
+            for c_i in np.arange(conds):
+                for c_j, m in enumerate(mean_matrix[c_i]):
+                    if c_i == c_j:
+                        col = 'yellow'
+                    else:
+                        col = 'white'
+                    ax2a.text(y=c_i + 0.5, x=n_angles*(2*c_j+1)/ 2, s=f'{mean_matrix[c_i, c_j]:.3f}', color=col,
+                                  va='center', ha='center', bbox=bbox_props)
+            ax2a.invert_yaxis()
+            # plt.savefig(f'{pca_dir}/AngleMatrix_{cortex}.png', dpi = 300, bbox_inches= 'tight')
+
+            plt.suptitle(f'PCA for Monkey {monkey_obj.name}\n{cortex}, {cortex_neurons} Neurons, {n_dims}-dim Subspace')
+            plt.tight_layout()
+            # fig.savefig(f'{pca_dir}/PCTraj3D_{cortex}_merged{len(monkey_name_map.keys())}.png', dpi = 300, bbox_inches= 'tight')
+            fig.savefig(f'{pca_dir}/PCTraj3D_{cortex}_monkey{monkey}_PCdims{n_dims}.png', dpi=300, bbox_inches='tight')
         plt.close(fig)
-    cos = torch.nn.CosineSimilarity(dim=0, eps=1e-8)
 
 for m_name, monkey in monkeys.items():
     monkey.save_monkey()

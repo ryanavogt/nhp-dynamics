@@ -44,6 +44,8 @@ class Monkey:
         :param cortex: The cortex of the monkey indices (string)
         """
         self.monkey_indices[cortex] = monkey_indices[self.name]
+        self.check_cortex(cortex)
+        self.cortices[cortex]['neurons'] = len(monkey_indices[self.name])
         return self.monkey_indices[cortex]
 
     def get_savedir(self, root_dir):

@@ -335,15 +335,16 @@ baseline_epoch = 'Pre-cue'
 base_window= epoch_window_map[baseline_epoch]['window']
 baseline_mask = (full_window>base_window[0]) * (full_window<base_window[1])
 event_masks = {}
+event_times = {}
 for event in ['Cue', 'Grasp On']:
     event_window = epoch_window_map[event]['window']
     event_masks[event] = (full_window>event_window[0]) * (full_window<event_window[1])
+    event_times[event] = int(-1*event_window[0]/binsize)
 p_score = 0.05
 modulation_dict = {}
 up_down_modulation = {}
 tVals_dict = {}
 for region in all_sdf_dict.keys():
-    event_max_slopes[region] = {}
     area, orientation = region.split('_')
     lat, area = area[0], area[1:]
     if orientation not in modulation_dict.keys():
@@ -356,10 +357,11 @@ for region in all_sdf_dict.keys():
     event_max_slopes = []
     for event in all_sdf_dict[region].keys():
         event_sdf = all_sdf_dict[region][event][event_masks[event_map[event]]]
-        event_slopes = event_sdf[1:]-event_sdf[:1]
+        event_slopes = event_sdf[1:]-event_sdf[:-1]
         event_max_slopes.append({'max': (event_slopes.max(axis=0), event_slopes.argmax(axis=0)),
-                                            'min': event_slopes.min(axis=0)})
-        mod_tuple = t_test(baseline_sdf, all_sdf_dict[region][event], q=p_score/2, paired=True)
+                                    'min': (event_slopes.min(axis=0), event_slopes.argmin(axis=0)),
+                                    'slopes':event_slopes, 'sdf':event_sdf, 'baseline': baseline_sdf})
+        mod_tuple = t_test(baseline_sdf.T, event_sdf.T, q=p_score/2, paired=True)
         event_modulations.append(mod_tuple[0])
         event_tVals.append(mod_tuple[1])
     event_modulations=np.vstack(event_modulations)
@@ -377,20 +379,38 @@ for region in all_sdf_dict.keys():
 Plot modulation by epoch and compute modulation by hand used
 """
 hand_use_mod = {}
+epoch_indices = {}
+start_time=0
+event_names = ['Cue', 'Grasp On']
+for i, event in enumerate(event_names):
+    epoch_indices[event] = {'times': {'start': start_time,
+                            'end': start_time - epoch_window_map[event]['window'][0] + epoch_window_map[event]['window'][1],
+                            'event_time': start_time - epoch_window_map[event]['window'][0]}
+                            }
+    start_time += (-epoch_window_map[event]['window'][0] + epoch_window_map[event]['window'][1])
+    epoch_indices[event]['indices'] = {}
+    for key, val in epoch_indices[event]['times'].items():
+        epoch_indices[event]['indices'][key] = int(val/binsize)
 for orientation in modulation_dict.keys():
     f, axs = plt.subplots(nrows=1, ncols=3, figsize=(12, 4), sharey='row')
     tval_f, tval_axs = plt.subplots(nrows=1, ncols=3, figsize=(12, 4), sharey='row')
+    # tval_f = plt.figure(figsize=(12,7), constrained_layout=True)
+    # tval_subfigs = tval_f.subfigures(nrows=1, ncols=3)
     hand_use_mod[orientation] = {}
     t_max = 0
     t_min = 0
     for idx, region in enumerate(up_down_modulation[orientation].keys()):
         hand_use_mod[orientation][region] = {}
         ax = axs[idx]
+        # tval_subfig = tval_subfigs[idx]
+        # tval_subfig.suptitle(f'{region}')
+        # tval_subfig.supxlabel('Epoch Max Slope Timing')
+        # tval_axs = tval_subfig.subplots(nrows=2, ncols=1)
         tval_ax = tval_axs[idx]
         multiplier = 0
         hand_mod = []
         tVal_list = []
-        for side, mod_tuple in up_down_modulation[orientation][region].items():
+        for side_idx, (side, mod_tuple) in enumerate(up_down_modulation[orientation][region].items()):
             bar_base = 0
             for i, mod_val in enumerate(['down', 'up']):
                 modulation = mod_tuple[i]
@@ -400,7 +420,7 @@ for orientation in modulation_dict.keys():
                 hand_mod.append(modulation)
                 offset = width*multiplier
                 mod_perc = np.average(modulation, axis=1)
-                max_height = 50
+                max_height = 100
                 rects = ax.bar(x+offset, mod_perc*100, width, bottom=bar_base, label=f'{side}, {mod_val}')
                 bar_base = mod_perc*100
             if t_max < np.nanmax(tVals_dict[orientation][region][side]):
@@ -422,30 +442,56 @@ for orientation in modulation_dict.keys():
                                              'Hand non-specific': both_mod}
         all_mods = {'ipsi':ipsi_only, 'contra':contra_only, 'both':both_mod, 'none':none_mod}
         mod_color_map = {'ipsi':'tab:blue', 'contra':'tab:orange', 'both':'tab:green', 'none':'tab:gray'}
-        event_list = ['Cue', 'Grasp']
+        event_list = ['Cue', 'Grasp On']
         tick_list = []
         tick_label_list = []
+        x_max = 0
         for i, event in enumerate(event_list):
+            start_idx = epoch_indices[event]['indices']['start']
+            event_idx = epoch_indices[event]['indices']['event_time']
+            end_idx = epoch_indices[event]['indices']['end']
+            tick_list.append(event_idx)
+            tick_label_list.append(event)
+            x_max = max(x_max, end_idx)
             for j, side in enumerate(up_down_modulation[orientation][region].keys()):
+                # tval_ax = tval_axs[j]
+                tval_ax.axvline(x=start_idx, color='grey', linestyle=':')
+                tval_ax.axvline(x=event_idx, color='black')
+                mod_dict = modulation_dict[orientation][region][side]
                 for k, mod_type in enumerate(all_mods.keys()):
-                    if mod_type == 'none':
+                    mod_mask = all_mods[mod_type][i]
+                    event_mod = tVal_list[j][i]
+                    if not (mod_type[:4] == side[:4] or mod_type == 'both'):
                         continue
-                    event_mod = tVal_list[j][i][all_mods[mod_type][i]]
-                    tick = i-.2+.4*j-.105+.07*k
-                    tick_list.append(tick)
-                    tick_label_list.append(mod_type)
-                    tval_ax.scatter(np.ones_like(event_mod)*tick, event_mod, label=mod_type, c=mod_color_map[mod_type], alpha=0.5)
-        for i, event in enumerate(event_list):
-            tval_ax.annotate(text=event, xy=(i, t_max + 1), ha='center', va='bottom')
-            for j, hand in enumerate(['Ipsi', 'Contra']):
-                tval_ax.annotate(text=hand, xy=(i-.2+.4*j, t_min-.5), ha='center', va='top')
-        tval_ax.set_xticks(tick_list, labels=tick_label_list, rotation='vertical')
-        tval_ax.set_ylabel('t Value')
-        tval_ax.set_title(f'{region}')
-        tval_ax.plot([-1, 2], [0, 0], 'k--')
-        tval_ax.set_xlim([-.5, 1.5])
-        tval_ax.set_ylim([t_min-2, t_max+2])
-        tval_ax.set_xlabel('Modulation')
+                    for direction in mod_dict['event_slopes'][i].keys():
+                        dir_idcs = mod_dict['event_slopes'][i][direction][1]
+                        if direction == 'max':
+                            dir_mask = event_mod>0
+                        elif direction == 'min':
+                            dir_mask = event_mod<0
+                        else: continue
+                        mod_idcs = dir_idcs[dir_mask*mod_mask]
+                        mod_tVals= event_mod[dir_mask*mod_mask]
+                        print(f'Plotting {mod_type}, {side}')
+                        tval_ax.scatter(mod_idcs+start_idx, mod_tVals, label=mod_type,
+                                        c=mod_color_map[mod_type], alpha=0.5)
+                    # event_mod = tVal_list[j][i][all_mods[mod_type][i]]
+                    # tick = i-.2+.4*j-.105+.07*k
+                    # tick_list.append(tick)
+                    # tick_label_list.append(mod_type)
+                    # tval_ax.scatter(np.ones_like(event_mod)*tick, event_mod, label=mod_type, c=mod_color_map[mod_type], alpha=0.5)
+        # for i, event in enumerate(event_list[:]):
+        #     tval_ax.annotate(text=event, xy=(i, t_max + 1), ha='center', va='bottom')
+        #     for j, hand in enumerate(['Ipsi', 'Contra']):
+        #         tval_ax.annotate(text=hand, xy=(i-.2+.4*j, t_min-.5), ha='center', va='top')
+                tval_ax.set_xticks(tick_list, labels=tick_label_list)#, rotation='vertical'
+                tval_ax.set_ylabel('t Value')
+                tval_ax.set_title(f'{region}')
+                tval_ax.axhline(y=0, color='grey')
+                tval_ax.set_xlim([0, x_max+2])
+                tval_ax.set_ylim([t_min-2, t_max+2])
+                tval_ax.set_yscale('symlog')
+                tval_ax.set_xlabel('Epoch Max Slope Timing')
         ax.set_ylabel('Neurons(%)')
         ax.set_ylim([0, max_height])
         ax.set_xlabel('Epochs')
