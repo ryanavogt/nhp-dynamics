@@ -4,6 +4,7 @@ import os                           #Directory Creation and Verification (built-
 # The following packages need to be installed in your virtual environment (using conda or pip)
 import matplotlib.pyplot as plt     #Generating plots
 import matplotlib as mpl
+import numpy as np
 from matplotlib.lines import Line2D
 import pandas
 import torch
@@ -441,15 +442,12 @@ for cortex in cortex_map.keys():
         ax_var.legend(ncol=2, loc='lower right')
 
         ax2.set_title(f'Conditions plotted onto first 2 {cortex} PCs')
-        # ax2a.set_title(f'Conditions plotted onto second 2 {cortex} PCs')
         ax3.set_title(f'Conditions plotted onto first 3 {cortex} PCs')
         ax3.set_xlabel('PC 1')
         ax3.set_ylabel('PC 2')
         ax3.set_xlabel('PC 1')
         ax2.set_xlabel('PC 1')
         ax2.set_ylabel('PC 2')
-        # ax2a.set_xlabel('PC 2')
-        # ax2a.set_ylabel('PC 3')
         ax2.legend()
         for n_dims in [5]:
             fig.delaxes(ax2a)
@@ -488,14 +486,18 @@ for cortex in cortex_map.keys():
                               ncols=2, loc='lower center')
             sns.move_legend(ax3, 'upper center', ncols=2, bbox_to_anchor=(.5, -.1))
             conds = len(cortex_angles[monkey].keys())
-            angle_matrix = torch.empty(conds, conds * n_angles)
-            mean_matrix = torch.empty(conds, conds)
+            angle_matrix = np.empty((conds, conds * n_angles))
+            mean_matrix = np.empty((conds, conds))
+            cond_matrix = np.empty((conds, conds), dtype=object)
             for c_i, cond in enumerate(cond_list):
                 for c_j, o_cond in enumerate(cond_list[:]):
                     angle_matrix[c_i, c_j * min(n_angles, m_neurons):(c_j + 1) * min(n_angles, m_neurons)] = (
                         torch.Tensor(cortex_angles[monkey][cond]['angles'][o_cond][:n_angles]))
                     mean_matrix[c_i, c_j] = cortex_angles[monkey][cond]['angles'][o_cond][:1].mean()
-
+                    cond_matrix[c_i, c_j] = f'{cond}:{o_cond}'
+            angle_file_name = f'{pca_dir}/AngleMatrix_{cortex}_monkey{monkey}_PCdims{n_dims}.p'
+            with open(angle_file_name, 'wb') as angle_file:
+                pkl.dump((mean_matrix, cond_matrix), angle_file)
             im = ax2a.pcolor(angle_matrix, cmap=mpl.colormaps['magma_r'],
                              norm=colors.Normalize(vmin=0.2, vmax=1, clip=True))
             div = make_axes_locatable(ax2a)
@@ -519,13 +521,108 @@ for cortex in cortex_map.keys():
                     ax2a.text(y=c_i + 0.5, x=n_angles*(2*c_j+1)/ 2, s=f'{mean_matrix[c_i, c_j]:.3f}', color=col,
                                   va='center', ha='center', bbox=bbox_props)
             ax2a.invert_yaxis()
-            # plt.savefig(f'{pca_dir}/AngleMatrix_{cortex}.png', dpi = 300, bbox_inches= 'tight')
 
             plt.suptitle(f'PCA for Monkey {monkey_obj.name}\n{cortex}, {cortex_neurons} Neurons, {n_dims}-dim Subspace')
             plt.tight_layout()
-            # fig.savefig(f'{pca_dir}/PCTraj3D_{cortex}_merged{len(monkey_name_map.keys())}.png', dpi = 300, bbox_inches= 'tight')
-            fig.savefig(f'{pca_dir}/PCTraj3D_{cortex}_monkey{monkey}_PCdims{n_dims}.png', dpi=300, bbox_inches='tight')
+            # fig.savefig(f'{pca_dir}/PCTraj3D_{cortex}_monkey{monkey}_PCdims{n_dims}.png', dpi=300, bbox_inches='tight')
         plt.close(fig)
+
+base_monkey = monkeys['All']
+pc_fig, pc_axs = plt.subplots(nrows=1, ncols=3, figsize=(12, 5))
+color_map = {'R': 'red', 'G': 'green', 'Y': 'yellow', 'B': 'blue'}
+for c_idx, cortex in enumerate(cortex_map.keys()):
+    reg_ax = pc_axs[c_idx]
+    handles = []
+    labels = []
+    base_pcs = base_monkey.cortices[cortex]['SVD']['Full']['V']
+    new_handle = True
+    for c_idx, condition in enumerate(base_monkey.condition_map[cortex].keys()):
+        base_sdf = base_monkey.cortices[cortex]['SVD'][condition]['sdf']
+        base_proj = base_sdf.T @ base_pcs
+        x, y, z = base_proj[:, :3].T
+        if new_handle:
+            line, = reg_ax.plot(x, y, color='black')
+            handles.append(line)
+            labels.append('All')
+            new_handle=False
+        else:
+            reg_ax.plot(x,y, color='black')
+    # reg_ax.plot(x,y, label='All', color='black')
+    reg_ax.set_title(cortex)
+    reg_ax.set_xlabel('PC 1')
+    reg_ax.set_ylabel('PC 2')
+    for m_name, monkey in monkeys.items():
+        if m_name == 'All':
+            continue
+        monkey_sdf = torch.zeros_like(base_sdf)
+        new_handle = True
+        for c_idx, condition in enumerate(base_monkey.condition_map[cortex].keys()):
+            monkey_sdf[monkey.monkey_indices[cortex]] = monkey.cortices[cortex]['SVD'][condition]['sdf']
+            monkey_pc_norm = base_pcs[monkey.monkey_indices[cortex]].norm(dim=0)
+            monkey_proj = (monkey_sdf.T @ base_pcs) / monkey_pc_norm
+            x, y, z = monkey_proj[:, :3].T
+            if new_handle:
+                line, = reg_ax.plot(x, y, label=m_name, color=color_map[m_name])
+                handles.append(line)
+                labels.append(m_name)
+                new_handle = False
+            else:
+                reg_ax.plot(x, y, color= color_map[m_name])
+        # monkey_sdf[monkey.monkey_indices[cortex]] = monkey.cortices[cortex]['SVD']['Full']['sdf']
+        # monkey_pc_norm = base_pcs[monkey.monkey_indices[cortex]].norm(dim=0)
+        # monkey_proj = (monkey_sdf.T@base_pcs)/monkey_pc_norm
+        # x,y,z = monkey_proj[:,:3].T
+        # reg_ax.plot(x, y, label=m_name, color=color_map[m_name])
+    reg_ax.legend(title='Monkey', handles=handles, labels=labels)
+pc_fig.suptitle('Monkey Trajectories in Joint Monkey PC Space')
+pc_fig.savefig(f'{pca_dir}/Joint_PCTrajectories.png', dpi=300, bbox_inches='tight')
+
+
+# diff_mode = 'absolute'
+diff_mode = 'relative'
+for monkey in monkey_indices.keys():
+    comb_fig, comb_axs = plt.subplots(nrows=3, ncols=1, figsize=(14, 12))
+    width = 0.14
+    for cort_idx, cortex in enumerate(cortex_map.keys()):
+        cort_ax = comb_axs[cort_idx]
+        angle_file_name = f'{pca_dir}/AngleMatrix_{cortex}_monkey{monkey}_PCdims{n_dims}.p'
+        with open(angle_file_name, 'rb') as angle_file:
+            mean_matrix, cond_matrix = pkl.load(angle_file)
+        mean_locs = np.tril(mean_matrix, k=-1)>0
+        mean_vals = mean_matrix[mean_locs]
+        cond_combs = cond_matrix[mean_locs]
+        comb_dict = {}
+        for c_i, start_comb in enumerate(cond_combs):
+            cond_label = f'{start_comb[:3]}:{start_comb.split(':')[1][:3]}'
+            comb_dict[cond_label] = []
+            start_mean = mean_vals[c_i]
+            for c_j, o_comb in enumerate(cond_combs[:]):
+                mean_diff = mean_vals[c_j] - start_mean
+                if diff_mode == 'absolute':
+                    diff_val = mean_diff
+                else:
+                    diff_val = mean_diff/start_mean
+                comb_dict[cond_label].append(diff_val)
+        multiplier = 0
+        x=  np.arange(len(cond_combs))
+        tick_labels = []
+        for comb, diff in comb_dict.items():
+            offset=width*multiplier
+            rects = cort_ax.bar(x+offset, diff, width, label = comb)
+            cort_ax.bar_label(rects, padding=3, fmt='%.2f')
+            multiplier+=1
+            tick_labels.append(f'{comb[:3]}:{comb.split(':')[1][:3]}')
+            cort_ax.axvline(x=multiplier-width, color='grey')
+        cort_ax.set_ylabel(f'{diff_mode.capitalize()} Difference')
+        cort_ax.set_title(f'{cortex}')
+        cort_ax.set_xticks(x+len(cond_combs)/2*width, comb_dict.keys())
+        cort_ax.legend(ncols = 3)
+        cort_ax.axhline(y=0, color='black')
+        cort_ax.set_ylim([-.38, .38])
+        cort_ax.set_xlim([-width, len(cond_combs)-width])
+    comb_fig.suptitle(f'{diff_mode.capitalize()} Difference in Principal Angles Across Conditions')
+    plt.tight_layout()
+    comb_fig.savefig(f'{pca_dir}/PrincipalAngleDiff_monkey{monkey}_{diff_mode}.png', dpi=300, bbox_inches='tight')
 
 for m_name, monkey in monkeys.items():
     monkey.save_monkey()

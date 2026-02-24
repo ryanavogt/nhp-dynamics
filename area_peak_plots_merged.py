@@ -391,6 +391,8 @@ for i, event in enumerate(event_names):
     epoch_indices[event]['indices'] = {}
     for key, val in epoch_indices[event]['times'].items():
         epoch_indices[event]['indices'][key] = int(val/binsize)
+
+all_mod_dict = {'tVal':[], 'idc':[], 'region':[], 'orient':[], 'event':[], 'mod_type':[], 'up-down':[]}
 for orientation in modulation_dict.keys():
     f, axs = plt.subplots(nrows=1, ncols=3, figsize=(12, 4), sharey='row')
     tval_f, tval_axs = plt.subplots(nrows=1, ncols=3, figsize=(12, 4), sharey='row')
@@ -470,9 +472,19 @@ for orientation in modulation_dict.keys():
                         elif direction == 'min':
                             dir_mask = event_mod<0
                         else: continue
-                        mod_idcs = dir_idcs[dir_mask*mod_mask]
-                        mod_tVals= event_mod[dir_mask*mod_mask]
-                        print(f'Plotting {mod_type}, {side}')
+                        full_mask = dir_mask*mod_mask
+                        n_mods = full_mask.sum()
+                        mod_idcs = dir_idcs[full_mask]
+                        mod_tVals= event_mod[full_mask]
+                        all_mod_dict['tVal'] += [mod_tVals]
+                        all_mod_dict['idc'] += [mod_idcs + start_idx]
+                        all_mod_dict['orient'] += [orientation] * n_mods
+                        all_mod_dict['region'] += [region] * n_mods
+                        all_mod_dict['event'] += [event] * n_mods
+                        all_mod_dict['mod_type'] += [mod_type] * n_mods
+                        all_mod_dict['up-down'] += [direction] * n_mods
+
+                        # print(f'Plotting {mod_type}, {side}')
                         tval_ax.scatter(mod_idcs+start_idx, mod_tVals, label=mod_type,
                                         c=mod_color_map[mod_type], alpha=0.5)
                     # event_mod = tVal_list[j][i][all_mods[mod_type][i]]
@@ -515,7 +527,54 @@ for orientation in modulation_dict.keys():
     f.suptitle(f'T Value by Epoch, {orientation.capitalize()}')
     plt.savefig(f'{summary_dir}/tVals_merged{len(monkey_name_map.keys())}_{orientation}.png', bbox_inches='tight')
 
+for key, val in all_mod_dict.items():
+    all_mod_dict[key] = np.hstack(val)
+mod_df = pd.DataFrame(all_mod_dict)
 width = 0.3
+for orientation in modulation_dict.keys():
+    f_hist, hist_axs = plt.subplots(nrows=1, ncols=3, figsize=(12,4))
+    for reg_idx, region in enumerate(modulation_dict[orientation].keys()):
+        mod_data = mod_df[(mod_df['orient']==orientation)&(mod_df['region']==region)]
+        pos_ax = hist_axs[reg_idx]
+        neg_ax = pos_ax.twinx()
+
+        # pos_ax.set_ylabel('Count')
+
+        pos_ax.set_xlabel('Epoch')
+        n_bins= 30
+        sns.histplot(data=mod_data[mod_data['up-down'] == 'max'], x="idc", hue="mod_type", shrink=1, alpha=.8,
+                     legend=False, ax=pos_ax, multiple='stack', bins=n_bins, hue_order = ['ipsi', 'contra', 'both'])
+        sns.histplot(data=mod_data[mod_data['up-down'] == 'min'], x="idc", hue="mod_type", shrink=1, alpha=.8,
+                     legend=True, ax=neg_ax, multiple='stack', bins=n_bins, hue_order = ['ipsi', 'contra', 'both'])
+        neg_ax.set_ylabel('')
+        max_val = pos_ax.get_ylim()[1]
+        min_val = neg_ax.get_ylim()[1]
+        y_lim = max(max_val, min_val)
+        tick_list = []
+        tick_label_list = []
+        neg_ax.set_yticks([])
+        neg_ax.set_ylim([-y_lim, y_lim])
+        neg_ax.invert_yaxis()
+        for event in event_list:
+            start_idx = epoch_indices[event]['indices']['start']
+            event_idx = epoch_indices[event]['indices']['event_time']
+            end_idx = epoch_indices[event]['indices']['end']
+            # pos_ax.axvline(x=start_idx, color='grey', linestyle=':')
+            # pos_ax.axvline(x=event_idx, color='black')
+            neg_ax.axvline(x=start_idx, color='grey', linestyle=':')
+            neg_ax.axvline(x=event_idx, color='black')
+            tick_list.append(event_idx)
+            tick_label_list.append(event)
+        pos_ax.set_xticks(tick_list, labels=tick_label_list)
+        pos_ax.set_ylim([-y_lim, y_lim])
+        y_ticks = pos_ax.get_yticks()
+        pos_ax.set_yticks(ticks = y_ticks, labels=np.abs(y_ticks).astype(np.int_))
+        neg_ax.axhline(y=0, color='black')
+
+    f_hist.suptitle(f'T Value Timing, {orientation.capitalize()}')
+    f_hist.tight_layout()
+    f_hist.savefig(f'{summary_dir}/tValsHist_merged{len(monkey_name_map.keys())}_{orientation}.png', bbox_inches='tight')
+
 for orientation in modulation_dict.keys():
     f, axs = plt.subplots(nrows=1, ncols=3, figsize=(12,4), sharey='row')
     for idx, region in enumerate(hand_use_mod[orientation].keys()):
