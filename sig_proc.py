@@ -164,7 +164,9 @@ def gpfa(sdf, w, bin_size, s_n2=1e-3, tau=1):
     print(K)
             # print(K1 + K2)
 
-def t_test(sdf1, sdf2, q=0.025, paired = False):
+def t_test(sdf1, sdf2, q=0.025, paired = False, type='two-sided'):
+    if type not in ['two-sided', 'greater', 'less']:
+        print(f'Invalid T-test type: {type}, expected [two-sided, greater, less]')
     n1, n2 = sdf1.shape[1], sdf2.shape[1]
     m1, m2 = np.mean(sdf1, axis=1), np.mean(sdf2, axis=1)
     s1, s2 = np.std(sdf1, axis=1),  np.std(sdf2, axis=1)
@@ -182,7 +184,12 @@ def t_test(sdf1, sdf2, q=0.025, paired = False):
     modulation = np.zeros(len(m1), dtype=bool)
     for neuron_idx in range(len(m1)):
         # lower_tail = t.cdf(t_vals[neuron_idx], df[neuron_idx])
-        sig_level = t.sf(abs(t_vals[neuron_idx]), df[neuron_idx])
+        if type == 'two-sided':
+            sig_level = t.sf(abs(t_vals[neuron_idx]), df[neuron_idx])
+        if type == 'greater':
+            sig_level = t.sf(t_vals[neuron_idx], df[neuron_idx])
+        if type == 'less':
+            sig_level = t.sf(-t_vals[neuron_idx], df[neuron_idx])
         # modulation[neuron_idx] = (lower_tail < q) or (upper_tail <q)
         modulation[neuron_idx] = sig_level < q
     return modulation, t_vals
@@ -192,3 +199,8 @@ def center_sdf(sdf):
     centered = sdf - mean.repeat(1, sdf.shape[1])
     square = centered @ centered.T
     return {'square':square, 'centered':centered}
+
+def velocity(proj, dims=3, dt=5):
+    diffs = proj[1:, :dims]-proj[:-1, :dims]
+    vel = np.sqrt((diffs**2).sum(dim=-1))
+    return vel

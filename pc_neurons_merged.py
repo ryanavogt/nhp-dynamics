@@ -26,6 +26,7 @@ summary_dir = f'Data/Processed/Summary'
 pca_dir = f'{summary_dir}/PCA_b{binsize}_k{kernel_width}'
 indices_filename = f'{pca_dir}_pcIndices_merged{merged_count}.p'
 joint_indices_filename = f'{pca_dir}_pcIndicesJoint_merged{merged_count}.p'
+monkey_dict_filename = f'{pca_dir}/allMonkeyDict.p'
 
 cortex_list = ['M1', 'PMd', 'PMv']
 cont_prop = [.2, .3, .4, .5, .6]
@@ -35,7 +36,10 @@ joint_indices = {}
 n_neurons = {}
 joint_fig, joint_axes = plt.subplots(nrows=3, ncols=1, figsize=(18, 15))
 
+skip_old = True
 for cort_idx, cortex in enumerate(cortex_list):
+    if skip_old:
+        break
     neuron_fig, neuron_axes = plt.subplots(2,2, figsize=(20, 10))
     neuron_fig_zoomed, neuron_axes_zoomed = plt.subplots(2, 2, figsize=(20, 10))
     pca_filename = f'{pca_dir}/PCA_merged{merged_count}_{cortex}_b{binsize}_k{kernel_width}.p'
@@ -107,4 +111,63 @@ with open(indices_filename, 'wb') as indices_file:
     pkl.dump(all_indices, indices_file)
 with open(joint_indices_filename, 'wb') as joint_indices_file:
     pkl.dump(joint_indices, joint_indices_file)
-print(joint_indices)
+# print(joint_indices)
+
+monkeys = pkl.load(open(monkey_dict_filename, 'rb'))
+color_map = {'R': 'tab:red', 'G': 'tab:green', 'Y': 'tab:orange', 'B': 'tab:blue'}
+merged_monkey = monkeys['All']
+joint_fig, joint_axes = plt.subplots(nrows=1, ncols=3, figsize=(18, 5))
+for cort_idx, cortex in enumerate(cortex_list):
+    cort_ax = joint_axes[cort_idx]
+    merged_V = merged_monkey.cortices[cortex]['SVD']['Full']['V']
+    V_plot, V_indices = (merged_V[:,:3]**2).sqrt().sum(dim=1).sort(descending=True, dim=0)
+    n_neurons = merged_monkey.cortices[cortex]['neurons']
+    title_string = f'{cortex} V weights, {n_neurons} neurons'
+    for m_name, monkey in monkeys.items():
+        if m_name == 'All':
+            continue
+        m_indices = monkey.monkey_indices[cortex]
+        monkey_neurons = monkey.cortices[cortex]['neurons']
+        title_string += f', {m_name}: {monkey_neurons}'
+        monkey_x = np.where((V_indices<=m_indices[-1])*(V_indices>=m_indices[0]))
+        cort_ax.bar(x=monkey_x[0], width=.85, height=V_plot[monkey_x[0]], label=m_name, color=color_map[m_name])
+    cort_ax.set_xlim([-1, n_neurons])
+    cort_ax.legend(title='Monkey')
+    cort_ax.set_title(title_string)
+    cort_ax.set_ylabel(f'Summed Neuron Value')
+joint_fig.suptitle(f'Abs Neuron Loading Value Sum for First 3 PCs')
+joint_fig.tight_layout()
+joint_fig.savefig(f'{pca_dir}/neuronMonkeyCont.png', bbox_inches='tight', dpi=600)
+
+mod_df = pkl.load(open(f'{summary_dir}/ModDataFrame.p', 'rb'))
+mod_color_map = {'ipsi':'tab:purple', 'contra':'tab:red', 'both:equal':'tab:green', 'both:opp':'tab:brown',
+                 'both:ipsi':'tab:blue', 'both:contra':'tab:orange', 'none':'tab:gray'}
+merged_monkey = monkeys['All']
+for orientation in ['horizontal', 'vertical']:
+    for epoch in ['Cue', 'Grasp On']:
+        joint_fig, joint_axes = plt.subplots(nrows=1, ncols=3, figsize=(18, 5))
+        for cort_idx, cortex in enumerate(cortex_list):
+            cort_ax = joint_axes[cort_idx]
+            merged_V = merged_monkey.cortices[cortex]['SVD']['Full']['V']
+            V_plot, V_indices = (merged_V[:,:3]**2).sqrt().sum(dim=1).sort(descending=True, dim=0)
+            n_neurons = merged_monkey.cortices[cortex]['neurons']
+            neuron_list = np.arange(n_neurons)
+            title_string = f'{cortex} V weights, {n_neurons} neurons'
+            for mod_type, color in mod_color_map.items():
+                # m_indices = monkey.monkey_indices[cortex]
+                monkey_neurons = monkey.cortices[cortex]['neurons']
+                mod_indices = mod_df[(mod_df['orient']==orientation)&(mod_df['region']==cortex)
+                                     &(mod_df['mod_type']==mod_type)&(mod_df['event']==epoch)]['n_idc']
+                mod_x = [False]*n_neurons
+                for idx, V_index in enumerate(V_indices):
+                    if V_index in list(mod_indices):
+                        mod_x[idx] = True
+                # title_string += f', {mod_type}: {len(mod_indices)}'
+                cort_ax.bar(x=neuron_list[mod_x], width=.85, height=V_plot[mod_x], label=mod_type, color=color)
+            cort_ax.set_xlim([-1, n_neurons])
+            cort_ax.legend(title='Monkey')
+            cort_ax.set_title(title_string)
+            cort_ax.set_ylabel(f'Summed Neuron Value')
+        joint_fig.suptitle(f'Abs Neuron Loading Value Sum for First 3 PCs by Mod Type in {epoch}')
+        joint_fig.tight_layout()
+        joint_fig.savefig(f'{pca_dir}/neuronModTypeCont{epoch}_{orientation}.png', bbox_inches='tight', dpi=600)

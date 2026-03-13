@@ -396,11 +396,11 @@ for cortex in cortex_map.keys():
             V_cond = cond_svd['V']
             cond_pc_neurons = V_cond[:, :3].abs().sort(dim=0, descending=True)
             cond_proj = cond_sdf.T @ V_cort #Use full-cortex vectors for projections
-
+            cond_vel = velocity(cond_proj, dims=3, dt=binsize)
             cond_data[monkey].append(cond_sdf.T)
             cond_event_means = {}
             cond_event_stds = {}
-            cond_neuron_dict[monkey][cond] = {'sdf': cond_sdf, 'indices': cond_pc_neurons.indices}
+            cond_neuron_dict[monkey][cond] = {'sdf': cond_sdf, 'indices': cond_pc_neurons.indices, 'velocity': cond_vel}
             prop_cycle = plt.rcParams['axes.prop_cycle']
             clrs = prop_cycle.by_key()['color']
 
@@ -499,7 +499,7 @@ for cortex in cortex_map.keys():
             with open(angle_file_name, 'wb') as angle_file:
                 pkl.dump((mean_matrix, cond_matrix), angle_file)
             im = ax2a.pcolor(angle_matrix, cmap=mpl.colormaps['magma_r'],
-                             norm=colors.Normalize(vmin=0.2, vmax=1, clip=True))
+                             norm=colors.Normalize(vmin=0.6, vmax=1, clip=True))
             div = make_axes_locatable(ax2a)
             cax = div.append_axes('right', size='5%', pad=0.05)
             fig.colorbar(im, cax=cax, orientation='vertical')
@@ -529,7 +529,7 @@ for cortex in cortex_map.keys():
 
 base_monkey = monkeys['All']
 pc_fig, pc_axs = plt.subplots(nrows=1, ncols=3, figsize=(12, 5))
-color_map = {'R': 'red', 'G': 'green', 'Y': 'yellow', 'B': 'blue'}
+color_map = {'R': 'tab:red', 'G': 'tab:green', 'Y': 'tab:orange', 'B': 'tab:blue'}
 for c_idx, cortex in enumerate(cortex_map.keys()):
     reg_ax = pc_axs[c_idx]
     handles = []
@@ -627,3 +627,6 @@ for monkey in monkey_indices.keys():
 for m_name, monkey in monkeys.items():
     monkey.save_monkey()
     print(f'Saving Monkey {m_name}')
+monkey_dict_filename = f'{pca_dir}/allMonkeyDict.p'
+with open(monkey_dict_filename, 'wb') as monkey_dict_file:
+    pkl.dump(monkeys, monkey_dict_file)
