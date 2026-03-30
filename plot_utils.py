@@ -1,6 +1,7 @@
 from matplotlib import pyplot as plt
 import seaborn as sns
 import numpy as np
+import colorsys
 
 sns.set_theme()
 sns.set_style(style='white')
@@ -71,3 +72,9 @@ def scatter_hist(x, y, ax, ax_histx, ax_histy, binwidth=0.1, **scatter_kwargs):
     bins = np.arange(-lim, lim + binwidth, binwidth)
     ax_histx.hist(x, bins=bins, color='b')
     ax_histy.hist(y, bins=bins, orientation='horizontal', color='r')
+
+def scale_lightness(rgb, scale_l):
+    # convert rgb to hls
+    h, l, s = colorsys.rgb_to_hls(*rgb)
+    # manipulate h, l, s values and return as rgb
+    return colorsys.hls_to_rgb(h, min(1, l * scale_l), s = s)

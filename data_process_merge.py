@@ -328,7 +328,7 @@ for region in area_rates.keys():
     for event in event_rates[region].keys():
         event_rates[region][event] = event_rates[region][event][event_nzero_mask[region]]
     e_r = event_rates[region]
-    # orientation_score = (a_r['vertical'] - a_r['horizontal'])/total_rates[region]
+    orientation_score = (a_r['vertical'] - a_r['horizontal'])/total_rates[region]
     event_score = (e_r['Grasp On'] - e_r['Cue']) / event_total_rates[region]
     hemisphere_score = (a_r['contralateral'] - a_r['ipsilateral']) / total_rates[region]
     upper_mosaic = [['histx', '.'],['scatter', 'histy']]
@@ -341,7 +341,7 @@ for region in area_rates.keys():
     norm = mpl.colors.LogNorm(vmin = np.nanmin(total_rates[region]), vmax = np.nanmax(total_rates[region]))
     # scatter_hist(ax=axs['scatter'], ax_histx=axs['histx'], ax_histy=axs['histy'], y=orientation_score,
     #              x = hemisphere_score, c=tr, norm='log')
-    scatter_hist(ax=axs['scatter'], ax_histx=axs['histx'], ax_histy=axs['histy'], y=event_score,
+    scatter_hist(ax=axs['scatter'], ax_histx=axs['histx'], ax_histy=axs['histy'], y=orientation_score,
                  x=hemisphere_score, c=tr, norm='log')
     plt.colorbar(cm.ScalarMappable(norm=norm), label='Total Rate', ax= axs['histy'])
     plt.suptitle(f'Neuron Scores for {region}')
@@ -355,39 +355,44 @@ for region in area_rates.keys():
     ax.set_xlim([-1.03,1.03])
     ax.set_ylim([-1.03,1.03])
 
-    # plt.savefig(f'{summary_dir}/neuronSelection_merged{len(monkey_name_map.keys())}_bin{binsize}_k{kernel_width}_{region}.png',
-    #             bbox_inches='tight', dpi=200)
+    plt.savefig(f'{summary_dir}/neuronSelection_merged{len(monkey_name_map.keys())}_bin{binsize}_k{kernel_width}_{region}.png',
+                bbox_inches='tight', dpi=200)
 
-    plt.savefig(
-        f'{summary_dir}/neuronSelectionEvent_merged{len(monkey_name_map.keys())}_bin{binsize}_k{kernel_width}_{region}.png',
-        bbox_inches='tight', dpi=200)
+    # plt.savefig(
+    #     f'{summary_dir}/neuronSelectionEvent_merged{len(monkey_name_map.keys())}_bin{binsize}_k{kernel_width}_{region}.png',
+    #     bbox_inches='tight', dpi=200)
+
     f_cum, ax_cum = plt.subplots(figsize=(6,6))
     # ax_cum = axs['cumulative']
     res_hem = sp.stats.ecdf(np.abs(hemisphere_score))
-    # res_ori = sp.stats.ecdf(np.abs(orientation_score))
-    res_event = sp.stats.ecdf(np.abs(event_score))
+    res_ori = sp.stats.ecdf(np.abs(orientation_score))
+    # res_event = sp.stats.ecdf(np.abs(event_score))
     q_hem = res_hem.cdf.quantiles
-    # q_ori = res_ori.cdf.quantiles
-    q_event = res_event.cdf.quantiles
+    q_ori = res_ori.cdf.quantiles
+    # q_event = res_event.cdf.quantiles
     area_hem = ((q_hem[1:]-q_hem[:-1])*np.arange(1,q_hem.shape[0])).sum()/q_hem.shape[0]
-    # area_ori = ((q_ori[1:]-q_ori[:-1])*np.arange(1,q_ori.shape[0])).sum()/q_ori.shape[0]
-    area_event = ((q_event[1:] - q_event[:-1]) * np.arange(1, q_event.shape[0])).sum() / q_event.shape[0]
+    area_ori = ((q_ori[1:]-q_ori[:-1])*np.arange(1,q_ori.shape[0])).sum()/q_ori.shape[0]
+    # area_event = ((q_event[1:] - q_event[:-1]) * np.arange(1, q_event.shape[0])).sum() / q_event.shape[0]
     res_hem.cdf.plot(ax_cum, label=f'abs Hemi, AUC: {area_hem:.3f}', c='b')
-    # res_ori.cdf.plot(ax_cum, label=f'abs Orient, AUC: {area_ori:.3f}', c ='r')
-    res_event.cdf.plot(ax_cum, label=f'abs Event, AUC: {area_event:.3f}', c='r')
+    res_ori.cdf.plot(ax_cum, label=f'abs Orient, AUC: {area_ori:.3f}', c ='r')
+    # res_event.cdf.plot(ax_cum, label=f'abs Event, AUC: {area_event:.3f}', c='r')
     # ax_cum.ecdf(np.abs(hemisphere_score), label='abs Hemi Index', c='b')
     # res_ori.cdf.plot(ax_cum, label=f'abs Orient, AUC: {area_ori:.3f}', c='r')
     # ax_cum.ecdf(np.abs(orientation_score), label='abs Orient Index', c ='r')
     ax_cum.plot([0,1], [0,1],'k--')
     ax_cum.set_ylabel('Cumulative Fraction')
-    # ax_cum.set_xlabel('abs Hemi and Orient Index')
-    ax_cum.set_xlabel('abs Hemi and Event Index')
+    ax_cum.set_xlabel('abs Hemi and Orient Index')
+    # ax_cum.set_xlabel('abs Hemi and Event Index')
     ax_cum.set_title(f'{region} Selection Ratio')
     ax_cum.set_xlim([0,1])
     ax_cum.set_ylim([0,1])
     ax_cum.legend()
-    # plt.savefig(f'{summary_dir}/neuronSelectionCumulative_merged{len(monkey_name_map.keys())}_bin{binsize}_k{kernel_width}_{region}.png',
-    #             bbox_inches='tight', dpi=200)
-    plt.savefig(
-        f'{summary_dir}/neuronSelectionCumulativeEvent_merged{len(monkey_name_map.keys())}_bin{binsize}_k{kernel_width}_{region}.png',
-        bbox_inches='tight', dpi=200)
+    plt.savefig(f'{summary_dir}/neuronSelectionCumulative_merged{len(monkey_name_map.keys())}_bin{binsize}_k{kernel_width}_{region}.png',
+                bbox_inches='tight', dpi=200)
+    # plt.savefig(
+    #     f'{summary_dir}/neuronSelectionCumulativeEvent_merged{len(monkey_name_map.keys())}_bin{binsize}_k{kernel_width}_{region}.png',
+    #     bbox_inches='tight', dpi=200)
+    score_filename = f'{summary_dir}/neuronSelection_scores_merged{len(monkey_name_map.keys())}_bin{binsize}_k{kernel_width}_{region}.p'
+    with open(score_filename, 'wb') as score_file:
+        pkl.dump({'hemi_score':hemisphere_score, 'orient_score':orientation_score, 'event_score':event_score,
+                  'nzero_mask':nzero_mask[region], 'event_nzero_mask':event_nzero_mask[region]}, score_file)

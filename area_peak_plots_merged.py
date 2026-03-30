@@ -1,12 +1,14 @@
 import pickle as pkl                #Saving/loading data (built-in)
 import os                           #Directory Creation and Verification (built-in)
 import glob
+import matplotlib as mpl
 
-# The following packages need to be installed in your virtual environment (usig conda or pip)
+# The following packages need to be installed in your virtual environment (using conda or pip)
 import matplotlib.pyplot as plt     #Generating plots
 from sig_proc import *
 import pandas as pd
 import matplotlib as mpl
+from plot_utils import scale_lightness
 
 from sig_proc import *
 
@@ -479,13 +481,14 @@ for orientation in modulation_dict.keys():
                 t_min = np.nanmin(tVals_dict[orientation][region][side])
             tVal_list.append(tVals_dict[orientation][region][side])
             multiplier+= 1
-        # ipsi_tVals, contra_tVals = tVal_list
+
         # Compute the share of modulated neurons across each hand
         neuron_idcs= np.arange(n_neurons)
         ipsi_mod = np.bitwise_or(hand_mod[0], hand_mod[1]) #Merge up and down modulation for Ipsi
         contra_mod = np.bitwise_or(hand_mod[2], hand_mod[3]) #Merge up and down modulation for Contra
         hand_nonSpecific = ~np.bitwise_xor(ipsi_mod, contra_mod)
         both_mod = ipsi_mod*contra_mod
+        equal_mod = ipsi_mod*contra_mod
         none_mod = ~ipsi_mod*~contra_mod
         ipsi_only = ipsi_mod * ~hand_nonSpecific
         contra_only = contra_mod * ~hand_nonSpecific
@@ -500,19 +503,20 @@ for orientation in modulation_dict.keys():
             elif lat == 'opp':
                 key_string = 'opp'
             hand_use_mod[orientation][region][f'both:{key_string}'] = hand_mod
-            both_mod[hand_mod]=False
+            equal_mod[hand_mod]=False
             if lat == 'ipsilateral':
                 ipsi_more = hand_mod
             elif lat == 'contralateral':
                 contra_more = hand_mod
             elif lat == 'opp':
                 opposite_mod = hand_mod
-        hand_use_mod[orientation][region]['both:equal'] = both_mod
-        hand_use_mod[orientation][region]['both:equal'] = both_mod
-        all_mods = {'ipsi':ipsi_only, 'contra':contra_only, 'both:equal':both_mod, 'both:opp':opposite_mod,
+        hand_use_mod[orientation][region]['both:equal'] = equal_mod
+        hand_use_mod[orientation][region]['both:all'] = both_mod
+        merged_mods = {'ipsi':ipsi_only, 'contra':contra_only, 'both':both_mod}
+        all_mods = {'ipsi':ipsi_only, 'contra':contra_only, 'both:equal':equal_mod, 'both:opp':opposite_mod,
                     'both:ipsi':ipsi_more, 'both:contra':contra_more, 'none':none_mod}
-        mod_color_map = {'ipsi':'tab:purple', 'contra':'tab:red', 'both:equal':'tab:green', 'both:opp':'tab:brown',
-                         'both:ipsi':'tab:blue', 'both:contra':'tab:orange', 'none':'tab:gray'}
+        mod_color_map = {'ipsi':'tab:purple', 'contra':'tab:red', 'both:equal':'tab:olive', 'both:opp':'tab:brown',
+                         'both:ipsi':'tab:blue', 'both:contra':'tab:orange', 'none':'tab:gray', 'both:all':'tab:green'}
         event_list = ['Cue', 'Grasp On']
         tick_list = []
         tick_label_list = []
@@ -559,15 +563,6 @@ for orientation in modulation_dict.keys():
                         # print(f'Plotting {mod_type}, {side}')
                         tval_ax.scatter(mod_tIdcs+start_idx, mod_tVals, label=mod_type,
                                         c=mod_color_map[mod_type], alpha=0.5)
-                    # event_mod = tVal_list[j][i][all_mods[mod_type][i]]
-                    # tick = i-.2+.4*j-.105+.07*k
-                    # tick_list.append(tick)
-                    # tick_label_list.append(mod_type)
-                    # tval_ax.scatter(np.ones_like(event_mod)*tick, event_mod, label=mod_type, c=mod_color_map[mod_type], alpha=0.5)
-        # for i, event in enumerate(event_list[:]):
-        #     tval_ax.annotate(text=event, xy=(i, t_max + 1), ha='center', va='bottom')
-        #     for j, hand in enumerate(['Ipsi', 'Contra']):
-        #         tval_ax.annotate(text=hand, xy=(i-.2+.4*j, t_min-.5), ha='center', va='top')
                 tval_ax.set_xticks(tick_list, labels=tick_label_list)#, rotation='vertical'
                 tval_ax.set_ylabel('t Value')
                 tval_ax.set_title(f'{region}')
@@ -581,7 +576,6 @@ for orientation in modulation_dict.keys():
         ax.set_xlabel('Epochs')
         ax.set_title(f'{region}')
         ax.set_xticks(x + width * (multiplier - 1) / 2, [e.split(' ')[0] for e in list(epoch_window_map.keys())[1:]])
-        # ax.legend(loc='upper left', ncols=3)
     handles, labels = plt.figure(f).get_axes()[-1].get_legend_handles_labels()
     f.legend(handles, labels, loc = (0.5, -0.05), ncols=4)
     plt.tight_layout()
@@ -592,9 +586,7 @@ for orientation in modulation_dict.keys():
 
     plt.figure(tval_f)
     t_handles, t_labels = tval_f.get_axes()[-1].get_legend_handles_labels()
-    # tval_f.legend(t_handles, t_labels, loc=(0.5, -0.05), ncols=4)
     plt.tight_layout()
-    # sns.move_legend(tval_f, "lower center", bbox_to_anchor=(.5, -.1), ncol=4)
     sns.despine()
     f.suptitle(f'T Value by Epoch, {orientation.capitalize()}')
     plt.savefig(f'{summary_dir}/tVals_merged{len(monkey_name_map.keys())}_{orientation}.png', bbox_inches='tight')
@@ -610,8 +602,6 @@ for orientation in modulation_dict.keys():
         mod_data = mod_df[(mod_df['orient']==orientation)&(mod_df['region']==region)]
         pos_ax = hist_axs[reg_idx]
         neg_ax = pos_ax.twinx()
-
-        # pos_ax.set_ylabel('Count')
 
         pos_ax.set_xlabel('Epoch')
         n_bins= 50
@@ -654,32 +644,78 @@ for orientation in modulation_dict.keys():
     f_hist.tight_layout()
     f_hist.savefig(f'{summary_dir}/tValsHist_merged{len(monkey_name_map.keys())}_{orientation}.png', bbox_inches='tight')
 
+layout = [
+    ['main_M1', 'main_M1', 'main_PMd', 'main_PMd', 'main_PMv', 'main_PMv'],
+    # ['main_M1', 'main_PMd', 'main_PMv'],
+    # ['M1_pie_Cue',  'PMd_pie_Cue',  'PMv_pie_Cue'],
+    # ['M1_pie_Grasp', 'PMd_pie_Grasp', 'PMv_pie_Grasp']
+    ['M1_pie_Cue', 'M1_pie_Grasp', 'PMd_pie_Cue', 'PMd_pie_Grasp', 'PMv_pie_Cue', 'PMv_pie_Grasp'],
+]
 for orientation in modulation_dict.keys():
-    f, axs = plt.subplots(nrows=1, ncols=3, figsize=(12,4), sharey='row')
+    f, axs = plt.subplot_mosaic(layout, figsize=(16,5.5), sharey = False)
+    width = 0.3
     for idx, region in enumerate(hand_use_mod[orientation].keys()):
-        ax = axs[idx]
+        ax = axs[f'main_{region}']
         multiplier = 0
         bar_base = 0
         for mod_type, modulation in hand_use_mod[orientation][region].items():
             hand_mod_perc = np.average(modulation, axis=1)
             max_height = 100
-            if mod_type[:4] == 'both':
+            if mod_type in ['both:all', 'ipsi', 'contra']:
                 offset = width * multiplier
-                rects = ax.bar(x+offset, hand_mod_perc*100, width, bottom=bar_base, label=mod_type,
-                               color=mod_color_map[mod_type])
+                rects = ax.bar(x+offset, hand_mod_perc*100, width, label=mod_type, color=mod_color_map[mod_type])
                 bar_base = hand_mod_perc*100 + bar_base
+                multiplier += 1
             else:
-                offset = width * multiplier
-                rects = ax.bar(x + offset, hand_mod_perc * 100, width, label=mod_type,color=mod_color_map[mod_type])
-                multiplier+= 1
+                continue
         ax.set_ylim([0, max_height])
         ax.set_xlabel('Epochs')
         ax.set_title(f'{region}')
         ax.set_xticks(x + width * (multiplier - 1) / 2, [e.split(' ')[0] for e in list(epoch_window_map.keys())[1:]])
-    handles, labels = plt.gca().get_legend_handles_labels()
-    f.legend(handles, labels, loc=(0.5, -.1), ncols=5)
-    sns.move_legend(f, "lower center", bbox_to_anchor=(.5, -.2), ncol=5)
-    axs[0].set_ylabel('Epoch Modulated Neurons (%)')
+        if region != 'M1':
+            ax.set_yticks([])
+    handles, labels = ax.get_legend_handles_labels()
+    axs['main_PMd'].legend(handles, labels, loc='upper center', bbox_to_anchor=(0.5, 1.0), ncols=3)
+
+    for idx, region in enumerate(hand_use_mod[orientation].keys()):
+        multiplier = 0
+        bar_base = 0
+        both_mod_list = ['both:ipsi', 'both:contra', 'both:equal', 'both:opp']
+        both_mod_counts = {'Cue': [], 'Grasp':[]}
+        for mod_type, modulation in hand_use_mod[orientation][region].items():
+            if mod_type in both_mod_list:
+                # base_mod = hand_use_mod[orientation][region]['both:all'] * up_down_modulation[orientation][region]['contralateral']
+                split_mod = hand_use_mod[orientation][region][mod_type]*up_down_modulation[orientation][region]['contralateral']
+                both_mod_counts['Cue'].append(split_mod[:,0].sum(axis=1))
+                both_mod_counts['Grasp'].append(split_mod[:,1].sum(axis=1))
+            else:
+                continue
+
+        both_mod_counts['Cue'] = np.stack(both_mod_counts['Cue'])
+        both_mod_counts['Grasp'] = np.stack(both_mod_counts['Grasp'])
+        size=0.4
+        rgb = mpl.colors.ColorConverter.to_rgb
+        for epoch in ['Cue', 'Grasp']:
+            pie_ax = axs[f'{region}_pie_{epoch}']
+            labels = []
+            labels += [f'{mod.split(':')[1]}' for mod in both_mod_list]
+            counts = both_mod_counts[epoch]
+            outer_colors = [mod_color_map[mod] for mod in both_mod_list]
+            inner_colors = []
+            for color in outer_colors:
+                inner_colors += [scale_lightness(rgb(color), 1.7)]
+                inner_colors += [scale_lightness(rgb(color), 1.2)]
+            pie_ax.pie(counts.sum(axis=1), radius=1, colors = outer_colors, startangle=90,
+                       wedgeprops=dict(width=size, edgecolor='w'), labels=labels, autopct='%1.f', labeldistance=1.1,
+                       pctdistance=0.8)
+            pie_ax.pie(counts.flatten(), radius = 1-size, colors=inner_colors, startangle=90,
+                       wedgeprops=dict(width=size, edgecolor='w'))
+            pie_ax.set_title(f'{epoch}', va='center')
+            if region == 'M1' and epoch == 'Cue':
+                pie_ax.set_ylabel(f'Both Mod Breakdown (%)')
+    axs['main_M1'].set_ylabel('Epoch Modulated Neurons (%)')
     f.suptitle(f'Modulation by Hand Used, {orientation.capitalize()}')
+    plt.tight_layout()
     sns.despine()
-    plt.savefig(f'{summary_dir}/HandModulation_merged{len(monkey_name_map.keys())}_{orientation}.png', bbox_inches='tight')
+    plt.savefig(f'{summary_dir}/HandModulation_merged{len(monkey_name_map.keys())}_{orientation}.png',
+                bbox_inches='tight')
