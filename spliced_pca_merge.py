@@ -6,17 +6,12 @@ import matplotlib.pyplot as plt     #Generating plots
 import matplotlib as mpl
 from matplotlib.lines import Line2D
 import pandas
-import torch
 from mpl_toolkits.mplot3d.axes3d import get_test_data
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib.colors as colors
 from plot_utils import pc_subplot, epoch_window_map
-from DSA import DSA
-from sklearn.cross_decomposition import CCA
-from sklearn.manifold import MDS
-import pandas as pd
-from DSA.stats import *
 from Monkey import *
+from scipy import stats
 
 from sig_proc import *
 
@@ -342,7 +337,9 @@ for event in all_durs.keys():
     event_marker_idx[event] = {'mean':mean_idx, 'std':std_idcs}
 
 monkeys = {}
-for cortex in cortex_map.keys():
+vel_fig, vel_axs = plt.subplots(nrows=1, ncols=3, figsize=(12,4))
+for cort_idx, cortex in enumerate(cortex_map.keys()):
+    vel_ax = vel_axs[cort_idx]
     var_plot_pcs = 'all'
     monkey_indices = all_monkey_indices[cortex]
     pca_filename = f'{pca_dir}/PCA_merged{len(monkey_name_map.keys())}_{cortex}_b{binsize}_k{kernel_width}.p'
@@ -366,9 +363,15 @@ for cortex in cortex_map.keys():
         pkl.dump(cortex_pca_vals, pca_file)
 
     pop_V = pop_pca_vals['V']
-    full_proj = dict_sdf['centered'].T@pop_V[cort[0]:cort[1]]
-    reg_var_sum = torch.cumsum(torch.diagonal(pop_V[cort[0]:cort[1]].T@cortex_pca_vals['cov']@pop_V[cort[0]:cort[1]]),
-                               dim=0)
+    full_proj = dict_sdf['centered'].T@V
+    proj_vel = velocity(full_proj, dims=3, dt=binsize)
+    vel_ax.plot(dict_sdf['centered'].mean(dim=0)[:-1], color='tab:blue', label='Pop Mean SDF')
+    vel_ax.plot(proj_vel, color='tab:orange', label='PC Velocity')
+    # reg_var_sum = torch.cumsum(torch.diagonal(pop_V[cort[0]:cort[1]].T@cortex_pca_vals['cov']@pop_V[cort[0]:cort[1]]),
+    #                            dim=0)
+    reg_var_sum = torch.cumsum(torch.diagonal(V.T @ cortex_pca_vals['cov'] @ V), dim=0)
+    vel_ax.legend()
+    vel_ax.set_title(f'{cortex}')
     region_var_explained[cortex] = reg_var_sum/reg_var_sum.max()
     x, y, z = full_proj[:, :3].T
     ax.plot(x, y, z, label = cortex)
@@ -379,7 +382,6 @@ for cortex in cortex_map.keys():
 
     angles = {}
     for o_cortex in full_angles:
-        # print(o_cortex)
         angles[o_cortex] = cos(full_proj[:, :n_angles], full_angles[o_cortex]['v'])
     full_angles[cortex] = {'v': full_proj[:, :n_angles], 'angles': angles}
 
@@ -395,11 +397,12 @@ for cortex in cortex_map.keys():
         if monkey not in monkeys.keys():
             monkeys[monkey] = Monkey(monkey, kernel_width, binsize, epoch_window_map)
         monkey_obj = monkeys[monkey]
+        monkey_obj.set_condition_map(condition_map)
         monkey_obj.get_indices(monkey_indices, cortex)
         monkey_obj.get_savedir(summary_dir)
-        monkey_obj.get_sdf(cortex_pca_vals['sdf'], condition_map[cortex], cortex)
-        monkey_obj.get_svd(V, condition_map[cortex], cortex)
-        monkey_obj.get_trial_psth(cortex_pca_vals['psth'], condition_map[cortex], cortex)
+        monkey_obj.get_sdf(cortex_pca_vals['sdf'], cortex)
+        monkey_obj.get_svd(cortex)
+        monkey_obj.get_trial_psth(cortex_pca_vals['psth'], cortex)
         fig = plt.figure(cortex, figsize=(7, 10))
         ax2 = fig.add_subplot(2, 2, 1)
         ax2a = fig.add_subplot(2, 2, 4)
@@ -413,16 +416,18 @@ for cortex in cortex_map.keys():
             m_neurons = len(monkey_index)
         else: m_neurons = max(cort)
         for idx, (cond, c_ind) in enumerate(condition_map[cortex].items()):
-            cond_sdf = cortex_pca_vals['sdf'][c_ind[0]:c_ind[1]][monkey_index]
-            cond_pc_neurons = V[c_ind[0]:c_ind[1], :3][monkey_index].abs().sort(dim=0, descending=True)
-            cond_proj = cond_sdf.T @ (V[c_ind[0]:c_ind[1]][monkey_index])
+            cond_sdf = monkey_obj.cortices[cortex]['sdf'][cond]
+            # cond_sdf = cortex_pca_vals['sdf'][c_ind[0]:c_ind[1]][monkey_index]
+            cond_V = monkey_obj.cortices[cortex]['SVD'][cond]['V']
+            # cond_pc_neurons = V[c_ind[0]:c_ind[1], :3][monkey_index].abs().sort(dim=0, descending=True)
+            cond_pc_neurons = cond_V[:3].abs().sort(dim=0, descending=True)
+            cond_proj = cond_sdf.T @ cond_V
 
             cond_data[monkey].append(cond_sdf.T)
             cond_event_means = {}
             cond_event_stds = {}
             # (cond_pc_neurons.values ** 2 / ((V[c_ind[0]:c_ind[1], :3] ** 2).sum(dim=0)))
             cond_neuron_dict[monkey][cond] = {'sdf': cond_sdf, 'indices': cond_pc_neurons.indices}
-            # cond_ax = axs[idx]
             prop_cycle = plt.rcParams['axes.prop_cycle']
             clrs = prop_cycle.by_key()['color']
 
@@ -453,10 +458,12 @@ for cortex in cortex_map.keys():
             # ax2a.plot(y, z, label=cond)
             angles = {}
             if monkey != 'All':
-                V_square = V[c_ind[0]:c_ind[1], c_ind[0]:c_ind[1]][monkey_index].T[monkey_index].T
+                # V_square = V[c_ind[0]:c_ind[1], c_ind[0]:c_ind[1]][monkey_index].T[monkey_index].T
+                V_square = cond_V
                 V_cond = V_square / np.linalg.norm(V_square, axis=0)
             else:
-                V_square = V[c_ind[0]:c_ind[1], c_ind[0]:c_ind[1]]
+                # V_square = V[c_ind[0]:c_ind[1], c_ind[0]:c_ind[1]]
+                V_square = cond_V
                 V_cond = V_square / np.linalg.norm(V_square, axis=0)
             for o_condition in cortex_angles[monkey]:
                 product = V_cond.T @ cortex_angles[monkey][o_condition]['v']
@@ -607,6 +614,7 @@ for cortex in cortex_map.keys():
             # plt.title(f'{cortex} Clustering')
             # plt.savefig(f'{pca_dir}/DMDClustering_{cortex}_delays{n_delays}_rank{rank}.png')
             # plt.close()
+vel_fig.savefig(f'{pca_dir}/PCVel.png', dpi=300, bbox_inches='tight')
 for m_name, monkey in monkeys.items():
     monkey.save_monkey()
     print(f'Saving Monkey {m_name}')

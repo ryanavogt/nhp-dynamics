@@ -202,5 +202,5 @@ def center_sdf(sdf):
 
 def velocity(proj, dims=3, dt=5):
     diffs = proj[1:, :dims]-proj[:-1, :dims]
-    vel = np.sqrt((diffs**2).sum(dim=-1))
-    return vel
+    spd = np.sqrt((diffs**2).sum(dim=-1))/dt
+    return spd

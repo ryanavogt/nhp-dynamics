@@ -4,20 +4,12 @@ import os                           #Directory Creation and Verification (built-
 # The following packages need to be installed in your virtual environment (using conda or pip)
 import matplotlib.pyplot as plt     #Generating plots
 import matplotlib as mpl
-import numpy as np
 from matplotlib.lines import Line2D
-import pandas
-import torch
-from mpl_toolkits.mplot3d.axes3d import get_test_data
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib.colors as colors
 from plot_utils import pc_subplot, epoch_window_map
-from DSA import DSA
-from sklearn.cross_decomposition import CCA
-from sklearn.manifold import MDS
-import pandas as pd
-from DSA.stats import *
 from Monkey import *
+import numpy as np
 
 from sig_proc import *
 
@@ -26,17 +18,14 @@ sns.set_theme()
 sns.set_style(style='white')
 
 def region_pca(region_map, pop_sdf, region_name):
-    # print('Computing PCA')
     pca_sdf = []
     for key in region_map.keys():
         if region_name in key:
             pca_ind = region_map[key]
             pca_sdf.append(pop_sdf[pca_ind[0]:pca_ind[1]])
     pca_sdf = torch.vstack(pca_sdf)
-    # U, S, V = torch.pca_lowrank(pca_sdf, center=True, q=q)
     cov = torch.cov(pca_sdf)
     sdf_square = center_sdf(pca_sdf)['square']
-    # U, S, V = torch.linalg.svd(cov, full_matrices = False)
     U, S, V = torch.linalg.svd(sdf_square, full_matrices=False)
 
     return U, S, V.T, cov
@@ -196,7 +185,6 @@ def cond_neuron_plot(neuron_dict, epoch_window_map, plot_neurons = 4, fig_size =
     leg = cond_axs[0].legend(handles=legend_elements, loc='lower center', bbox_to_anchor=(.5, 1.1), ncols = 4)
     return cond_fig
 
-# monkey_name_map = {'G':'Green', 'R':'Red'}
 monkey_name_map = {'G':'Green', 'R':'Red', 'Y':'Yellow', 'B':'Blue'}
 event_map = {'trialRewardDrop': 'Cue', 'trialGraspOn':'Grasp On', 'trialGraspOff':'Grasp Off', 'trialReachOn':'Reach'}
 # Define the reference events and time window defining each epoch
@@ -219,7 +207,7 @@ binsize = 5
 all_x = np.arange(0, current_time, binsize)
 kernel_width = 25
 full_window = np.arange(-1000, 1000+binsize, binsize)
-new_popdict = False
+new_popdict = True
 pca_dir = f'{summary_dir}/PCA_b{binsize}_k{kernel_width}'
 
 durs_file_name = f'{summary_dir}/durs_list_merged{len(monkey_name_map.keys())}.p'
@@ -294,7 +282,6 @@ else:
         del condition_map[cor]['idx']
     del cortex_map['idx']
     del merged_pop_dict['idx']
-    # cortex_map['All'] = max([e[1] for e in list(cortex_map.values())])
     merged_pop_sdf = torch.Tensor(np.vstack(merged_pop_dict['sdf']))
     merged_pop_psth = torch.Tensor(np.vstack(merged_pop_dict['psth']))
     merged_pop_dict['sdf'] = merged_pop_sdf
@@ -307,8 +294,6 @@ else:
     merged_pop_dict['condition_map'] = condition_map
     with open(pop_filename, 'wb') as pop_file:
         pkl.dump(merged_pop_dict, pop_file)
-    # with open(pop_psth_filename, 'wb') as psth_file:
-    #     pkl.dump(pop_pca_vals, psth_file)
 
 pca_overwrite = True
 cortex_map = merged_pop_dict['cortex_map']
@@ -342,7 +327,8 @@ cond_data = {}
 cond_neuron_dict = {}
 cortex_angles = {}
 cos = torch.nn.CosineSimilarity(dim=0, eps=1e-8)
-for cortex in cortex_map.keys():
+vel_fig, vel_axs = plt.subplots(nrows=1, ncols=3, figsize=(12,5))
+for cort_idx, cortex in enumerate(cortex_map.keys()):
     monkey_indices = all_monkey_indices[cortex]
     del monkey_indices['count']
     monkey_indices['All'] = np.arange(0, max([e[-1] for e in list(monkey_indices.values())])+1)
@@ -365,7 +351,7 @@ for cortex in cortex_map.keys():
 
         V_cort = cortex_svd['Full']['V']
         S_cort = cortex_svd['Full']['S']
-        fig = plt.figure(cortex, figsize=(7, 10))
+        fig = plt.figure(cortex, figsize=(7, 8))
         ax2 = fig.add_subplot(2, 2, 1)
         ax2a = fig.add_subplot(2, 2, 4)
         ax3 = fig.add_subplot(2, 2, 2, projection='3d')
@@ -403,6 +389,21 @@ for cortex in cortex_map.keys():
             cond_neuron_dict[monkey][cond] = {'sdf': cond_sdf, 'indices': cond_pc_neurons.indices, 'velocity': cond_vel}
             prop_cycle = plt.rcParams['axes.prop_cycle']
             clrs = prop_cycle.by_key()['color']
+            rgb = mpl.colors.ColorConverter.to_rgb
+
+            if monkey == 'All':
+                x = np.arange(cond_vel.shape[0])*binsize
+                vel_ax = vel_axs[cort_idx]
+                vel_ax.plot(x, cond_vel/cond_vel.max(), color = 'tab:red')
+                vel_ax.plot(x, cond_sdf[:, :-1].mean(dim=0)/cond_sdf[:, :-1].mean(dim=0).max(), color='tab:blue')
+                if idx==0:
+                    legend_lines = [Line2D([0], [0], color='tab:blue', lw=4),
+                                    Line2D([0], [0], color='tab:red', lw=4)]
+                for epoch in epoch_window_map.keys():
+                    event_time= epoch_window_map[epoch]['time']
+                    window_end = event_time + epoch_window_map[epoch]['window'][1]
+                    vel_ax.axvline(event_time, color='black')
+                    vel_ax.axvline(window_end, color='gray')
 
             # var_plot_pcs = 'all'
             var_plot_pcs = 20
@@ -432,6 +433,10 @@ for cortex in cortex_map.keys():
                 em_x, em_y, em_z = cond_event_means[event]
                 ax3.scatter(em_x, em_y, em_z, marker=event_shapes[event_map[event]], c='k', alpha=0.4, s=100)
                 ax2.scatter(em_x, em_y, marker=event_shapes[event_map[event]], c='k', alpha=0.4, s=100)
+        if monkey == 'All':
+            vel_ax.set_title(f'{cortex}')
+            vel_ax.set_xlabel(f'Time (ms)')
+            vel_ax.set_ylabel(f'Relative Magnitude')
         cond_list = list(condition_map[cortex].keys())
         var = S_cort.square()
         var_sum = torch.cumsum(var, 0)
@@ -449,6 +454,8 @@ for cortex in cortex_map.keys():
         ax2.set_xlabel('PC 1')
         ax2.set_ylabel('PC 2')
         ax2.legend()
+        if monkey == 'All':
+            vel_ax.legend(legend_lines, ['Mean SDE', 'Velocity'])
         for n_dims in [5]:
             fig.delaxes(ax2a)
             ax2a = fig.add_subplot(2, 2, 4)
@@ -524,8 +531,10 @@ for cortex in cortex_map.keys():
 
             plt.suptitle(f'PCA for Monkey {monkey_obj.name}\n{cortex}, {cortex_neurons} Neurons, {n_dims}-dim Subspace')
             plt.tight_layout()
-            # fig.savefig(f'{pca_dir}/PCTraj3D_{cortex}_monkey{monkey}_PCdims{n_dims}.png', dpi=300, bbox_inches='tight')
+            fig.savefig(f'{pca_dir}/PCTraj3D_{cortex}_monkey{monkey}_PCdims{n_dims}.png', dpi=300, bbox_inches='tight')
         plt.close(fig)
+vel_fig.tight_layout()
+vel_fig.savefig(f'{pca_dir}/PCVelocity.png', dpi=300, bbox_inches='tight')
 
 base_monkey = monkeys['All']
 pc_fig, pc_axs = plt.subplots(nrows=1, ncols=3, figsize=(12, 5))
@@ -554,34 +563,30 @@ for c_idx, cortex in enumerate(cortex_map.keys()):
     for m_name, monkey in monkeys.items():
         if m_name == 'All':
             continue
-        monkey_sdf = torch.zeros_like(base_sdf)
+        # monkey_sdf = torch.zeros_like(base_sdf)
         new_handle = True
         for c_idx, condition in enumerate(base_monkey.condition_map[cortex].keys()):
+            monkey_sdf = torch.zeros_like(base_sdf)
             monkey_sdf[monkey.monkey_indices[cortex]] = monkey.cortices[cortex]['SVD'][condition]['sdf']
             monkey_pc_norm = base_pcs[monkey.monkey_indices[cortex]].norm(dim=0)
-            monkey_proj = (monkey_sdf.T @ base_pcs) / monkey_pc_norm
+            monkey_proj = (monkey_sdf.T @ base_pcs) / monkey_pc_norm**2
             x, y, z = monkey_proj[:, :3].T
             if new_handle:
-                line, = reg_ax.plot(x, y, label=m_name, color=color_map[m_name])
+                line, = reg_ax.plot(x, y, label=m_name, color=color_map[m_name], alpha=0.5)
                 handles.append(line)
                 labels.append(m_name)
                 new_handle = False
             else:
-                reg_ax.plot(x, y, color= color_map[m_name])
-        # monkey_sdf[monkey.monkey_indices[cortex]] = monkey.cortices[cortex]['SVD']['Full']['sdf']
-        # monkey_pc_norm = base_pcs[monkey.monkey_indices[cortex]].norm(dim=0)
-        # monkey_proj = (monkey_sdf.T@base_pcs)/monkey_pc_norm
-        # x,y,z = monkey_proj[:,:3].T
-        # reg_ax.plot(x, y, label=m_name, color=color_map[m_name])
+                reg_ax.plot(x, y, color= color_map[m_name], alpha = 0.5)
     reg_ax.legend(title='Monkey', handles=handles, labels=labels)
 pc_fig.suptitle('Monkey Trajectories in Joint Monkey PC Space')
 pc_fig.savefig(f'{pca_dir}/Joint_PCTrajectories.png', dpi=300, bbox_inches='tight')
 
 
-# diff_mode = 'absolute'
-diff_mode = 'relative'
+diff_mode = 'absolute'
+# diff_mode = 'relative'
 for monkey in monkey_indices.keys():
-    comb_fig, comb_axs = plt.subplots(nrows=3, ncols=1, figsize=(14, 12))
+    comb_fig, comb_axs = plt.subplots(nrows=3, ncols=1, figsize=(10, 12))
     width = 0.14
     for cort_idx, cortex in enumerate(cortex_map.keys()):
         cort_ax = comb_axs[cort_idx]
@@ -620,10 +625,52 @@ for monkey in monkey_indices.keys():
         cort_ax.axhline(y=0, color='black')
         cort_ax.set_ylim([-.38, .38])
         cort_ax.set_xlim([-width, len(cond_combs)-width])
-    comb_fig.suptitle(f'{diff_mode.capitalize()} Difference in Principal Angles Across Conditions')
+    # comb_fig.suptitle(f'{diff_mode.capitalize()} Difference in Principal Angles Across Conditions')
     plt.tight_layout()
     comb_fig.savefig(f'{pca_dir}/PrincipalAngleDiff_monkey{monkey}_{diff_mode}.png', dpi=300, bbox_inches='tight')
 
+cort_colors = {'M1': 'tab:blue', 'PMd': 'tab:orange', 'PMv': 'tab:green'}
+n_pcs = 2
+for vel in [True, False]:
+    for m_name, monkey in monkeys.items():
+        pc_fig, pc_axs = plt.subplots(nrows=n_pcs, ncols=4, figsize=(12, 3*n_pcs))
+        for cort_idx, cortex in enumerate(cortex_map.keys()):
+            monkey_pcs = monkey.cortices[cortex]['SVD']['Full']['V']
+            # cort_axs = pc_axs[cort_idx]
+            cort_axs = pc_axs
+            for cond_idx, condition in enumerate(monkey.condition_map[cortex].keys()):
+                cond_sdf = monkey.cortices[cortex]['SVD'][condition]['sdf']
+                cond_proj = cond_sdf.T@monkey_pcs
+                # cond_axs = cort_axs[cond_idx]
+                for pc in range(n_pcs):
+                    # print(f'PC = {pc}')
+                    pc_ax = cort_axs[pc][cond_idx]
+                    y_traj = cond_proj.T[pc]
+                    y_vel = y_traj[1:]-y_traj[:-1]
+                    if vel:
+                        y = y_vel
+                        name='Velocity'
+                    else:
+                        y= y_traj
+                        name=''
+                    x = np.arange(len(y)) * binsize
+                    if y[5] <0:
+                        y*= -1
+                    pc_ax.plot(x, y, color=cort_colors[cortex], label=cortex)
+                    if cort_idx == len(cortex_map.keys())-1:
+                        for epoch in epoch_window_map.keys():
+                            event_time = epoch_window_map[epoch]['time']
+                            window_end = event_time + epoch_window_map[epoch]['window'][1]
+                            pc_ax.axvline(event_time, color='black', alpha=0.5)
+                            pc_ax.axvline(window_end, color='gray', alpha=0.5)
+                        pc_ax.axhline(0, color='black', alpha=0.7)
+                        pc_ax.legend(title='Cortex')
+                        pc_ax.set_title(f'{condition}, PC {pc+1}')
+                        pc_ax.set_xlabel('Time (ms)')
+                        pc_ax.set_ylabel(f'PC {name}')
+            pc_fig.suptitle(f'First PCs {name} for each Cortex, Monkey {m_name}')
+            pc_fig.tight_layout()
+            pc_fig.savefig(f'{pca_dir}/CoupledPCs{name}_monkey{m_name}.png', dpi=300, bbox_inches='tight')
 for m_name, monkey in monkeys.items():
     monkey.save_monkey()
     print(f'Saving Monkey {m_name}')

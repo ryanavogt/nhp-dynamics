@@ -1,0 +1,707 @@
+import pickle as pkl                #Saving/loading data (built-in)
+import os                           #Directory Creation and Verification (built-in)
+
+# The following packages need to be installed in your virtual environment (using conda or pip)
+import matplotlib.pyplot as plt     #Generating plots
+import matplotlib as mpl
+from matplotlib.lines import Line2D
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+import matplotlib.colors as colors
+from plot_utils import pc_subplot, epoch_window_map
+from Monkey import *
+import numpy as np
+
+from sig_proc import *
+
+import seaborn as sns
+sns.set_theme()
+sns.set_style(style='white')
+
+def region_pca(region_map, pop_sdf, region_name):
+    pca_sdf = []
+    for key in region_map.keys():
+        if region_name in key:
+            pca_ind = region_map[key]
+            pca_sdf.append(pop_sdf[pca_ind[0]:pca_ind[1]])
+    pca_sdf = torch.vstack(pca_sdf)
+    cov = torch.cov(pca_sdf)
+    sdf_square = center_sdf(pca_sdf)['square']
+    U, S, V = torch.linalg.svd(sdf_square, full_matrices=False)
+
+    return U, S, V.T, cov
+
+def hemi_variance(pc_dict, region_map, baseline_region, target_regions, orientation='vertical', pc_dims=10,
+                  all_regions=False, plot_cov = False, fig = plt.figure(), indices=0):
+    #First, define relevant variables from parameters
+    var_plot_dict = {}
+    hemi_color = {'c': 'b', 'i': 'r'}
+    hemi_map = {'c': 'contralateral', 'i': 'ipsilateral'}
+    base_hemi, base_area = baseline_region[0], baseline_region[1:]
+    base_pca = pc_dict[orientation][baseline_region]
+    base_cov = base_pca['cov']
+    if pc_dims == 'all':
+        pc_dims = base_cov.shape[0]
+    base_pcs = base_pca['V']
+    base_var_sum = torch.cumsum(torch.diagonal(base_pcs.T@base_cov@base_pcs), dim=0)
+    base_var_trace = base_var_sum.max()
+    if plot_cov:
+        f_cov = plt.figure(figsize=(8,8))
+        plt.imshow(base_cov, norm=mpl.colors.SymLogNorm(linthresh=.001, linscale=.01), cmap='RdBu_r')
+        plt.title(f'Covariance Matrix for {baseline_region}, {orientation}')
+        plt.colorbar()
+        var_plot_dict['Covariance'] = f_cov
+    plt.figure(fig)
+    ax_var = fig.axes[indices]
+    ax_var.scatter(np.arange(1, pc_dims+1), base_var_sum[:pc_dims]/base_var_trace,
+                label = hemi_map[base_hemi], c = hemi_color[base_hemi])
+    for target_region in target_regions:
+        target_hemi, target_area = target_region[0], target_region[1:]
+        if target_region == baseline_region:
+            continue
+        if target_area != base_area and not all_regions:
+            # print(f'Skipping {target_area}')
+            continue
+        target_pca = pc_dict[orientation][target_region]
+        target_cov = target_pca['cov']
+        target_var_sum = torch.cumsum(torch.diagonal(base_pcs.T@target_cov@base_pcs), dim=0)
+        ax_var.scatter(np.arange(1, pc_dims+1), target_var_sum[:pc_dims]/target_var_sum.max(),
+                       label=hemi_map[target_hemi], c=hemi_color[target_hemi])
+    ax_var.set_ylim([0, 1.03])
+    ax_var.set_title(f'{orientation.capitalize()}, {hemi_map[base_hemi].capitalize()} PCs')
+    if indices % 2 == 0:
+        ax_var.set_ylabel('Variance Explained')
+    # f_var.legend()
+    var_plot_dict['Variance'] = fig
+    return var_plot_dict
+
+def orientation_variance(pc_dict, base_orientation, baseline_region, pc_dims=10,
+                  all_regions=False, plot_cov = False, fig = plt.figure(), indices=0):
+
+    #First, define relevant variables from parameters
+    orient_plot_dict = {}
+    target_orientation = ['horizontal', 'vertical']
+    target_orientation.remove(orientation)
+    target_orientation = target_orientation[0]
+    orient_color = {'vertical': 'r', 'horizontal': 'b'}
+    hemi_map = {'c': 'contralateral', 'i': 'ipsilateral'}
+    base_hemi, base_area = baseline_region[0], baseline_region[1:]
+    base_pca = pc_dict[base_orientation][baseline_region]
+    base_cov = base_pca['cov']
+    if pc_dims == 'all':
+        pc_dims = base_cov.shape[0]
+    base_pcs = base_pca['V']
+    base_var_sum = torch.cumsum(torch.diagonal(base_pcs.T@base_cov@base_pcs), dim=0)
+    base_var_trace = base_var_sum.max()
+    plt.figure(fig)
+    ax_var = fig.axes[indices]
+    ax_var.scatter(np.arange(1, pc_dims+1), base_var_sum[:pc_dims]/base_var_trace,
+                label = base_orientation, c = orient_color[base_orientation])
+    #Now, compute target orientation variance explained by base orientation PCs
+    target_pca = pc_dict[target_orientation][baseline_region]
+    target_cov = target_pca['cov']
+    target_var_sum = torch.cumsum(torch.diagonal(base_pcs.T@target_cov@base_pcs), dim=0)
+    ax_var.scatter(np.arange(1, pc_dims+1), target_var_sum[:pc_dims]/target_var_sum.max(),
+                   label=target_orientation, c=orient_color[target_orientation])
+    ax_var.set_ylim([0, 1.03])
+    ax_var.set_title(f'{hemi_map[base_hemi].capitalize()}, {orientation.capitalize()} PCs')
+    if indices % 2 == 0:
+        ax_var.set_ylabel('Variance Explained')
+    # f_var.legend()
+    orient_plot_dict['Variance'] = fig
+    return orient_plot_dict
+
+def region_projection(all_sdf, pc_dict, region_map, data_region, pc_region, pc_dims=3, orientation='vertical',
+                      fig = plt.figure(), indices=0, bin_size=5, epoch_windows=epoch_window_map):
+    hemi_map = {'c': 'contralateral', 'i': 'ipsilateral'}
+    base_pca = pc_dict[orientation][pc_region]
+    base_pcs = base_pca['V']
+    data_ind = region_map[data_region]
+    data = all_sdf[data_ind[0]:data_ind[1]]
+    projected = data.T @ base_pcs
+    plt.figure(fig)
+    ax_proj = fig.axes[indices]
+    x_proj = torch.arange(1, data.shape[1]*bin_size, step=bin_size)
+    for pc in range(pc_dims):
+        ax_proj.plot(x_proj, projected[:, pc], label = f'PC {pc+1}')
+    epoch_lines = []
+    for epoch in epoch_windows.keys():
+        epoch_lines.append(epoch_windows[epoch]['time'])
+    ax_proj.vlines(epoch_lines, ymin = projected[:, :pc].min(), ymax = projected[:, :pc].max(), colors='k')
+    ax_proj.set_xticks(epoch_lines, labels=epoch_windows.keys())
+    ax_proj.set_title(f'{orientation.capitalize()}, {hemi_map[pc_region[0]]}')
+    plot_dict = {'Projection': fig}
+    return plot_dict
+
+def cond_neuron_plot(neuron_dict, epoch_window_map, plot_neurons = 4, fig_size = (9, 12), legend_elements=[],
+                     cond_shapes = {'c_vertical': '+', 'c_horizontal': 'x', 'i_vertical': '|', 'i_horizontal': '.'},
+                     mean_plot = False):
+    prop_cycle = plt.rcParams['axes.prop_cycle']
+    clr_list = prop_cycle.by_key()['color']
+    n_rows = len(neuron_dict.keys())
+    cond_fig, cond_axs = plt.subplots(nrows= n_rows, ncols=1, figsize=fig_size)
+    for cond_idx, condition in enumerate(neuron_dict.keys()):
+        condition_sdf = neuron_dict[condition]['sdf']
+        condition_ax = cond_axs[cond_idx]
+        if not mean_plot:
+            for o_condition in neuron_dict.keys():
+                if o_condition == condition:
+                    continue
+                o_cond_idx = neuron_dict[o_condition]['indices']
+                for o_idx in range(3):
+                    color = 'gray'
+                    condition_ax.plot(torch.arange(1, cond_sdf.shape[1] * binsize + 1, binsize),
+                                condition_sdf[o_cond_idx[:plot_neurons, o_idx]].T,
+                                      marker=cond_shapes[o_condition], markerfacecolor='gray', markevery= 5,
+                                       ms = 10, label=f'PC {o_idx + 1}', alpha =0.6,
+                                       color=color, linestyle=(0, (5, max(1, 5*o_idx))))
+        for pc_idx in range(3):
+            color=clr_list[pc_idx]
+            if not mean_plot:
+                condition_ax.plot(torch.arange(1, cond_sdf.shape[1] * binsize + 1, binsize),
+                                            condition_sdf[neuron_dict[condition]['indices'][:plot_neurons, pc_idx]].T,
+                                            color=color, linewidth = 2, linestyle=(0, (5, max(0, 2*pc_idx*0))))
+            else:
+                sdf_mean = condition_sdf[neuron_dict[condition]['indices'][:plot_neurons, pc_idx]].mean(dim=0)
+                sdf_error = condition_sdf[neuron_dict[condition]['indices'][:plot_neurons, pc_idx]].std(dim=0)
+                condition_ax.plot(torch.arange(1, cond_sdf.shape[1] * binsize + 1, binsize),
+                                  sdf_mean, color=color, linewidth=2, linestyle=(0, (5, max(0, 2 * pc_idx * 0))))
+                condition_ax.fill_between(torch.arange(1, cond_sdf.shape[1] * binsize + 1, binsize),
+                                  sdf_mean-sdf_error, sdf_mean+sdf_error, facecolor=color, alpha=0.5)
+            if (cond_idx == 0):
+                if mean_plot:
+                    legend_elements.append(Line2D([0], [0], color=color,
+                                                  label=f'PC {pc_idx + 1}'))
+                else:
+                    legend_elements.append(Line2D([0], [0], color=color, linestyle=(0, (5, max(1, 3*pc_idx))),
+                                              label=f'PC {pc_idx+1}'))
+        condition_ax.set_title(f'{condition}')
+        times = [epoch_window_map[epoch]['time'] for epoch in epoch_window_map.keys()]
+        condition_ax.vlines([epoch_window_map[epoch]['time'] for epoch in epoch_window_map.keys()],
+                      cond_sdf.min() * 1.1, cond_sdf.max() * 1.1, color='k')
+        condition_ax.set_xticks(times, labels = [epoch for epoch in epoch_window_map.keys()])
+        ymin = cond_sdf.min()
+        ymax = cond_sdf.max()
+        condition_ax.set_ylim([ymin, ymax])
+    leg = cond_axs[0].legend(handles=legend_elements, loc='lower center', bbox_to_anchor=(.5, 1.1), ncols = 4)
+    return cond_fig
+
+monkey_name_map = {'G':'Green', 'R':'Red', 'Y':'Yellow', 'B':'Blue'}
+event_map = {'trialRewardDrop': 'Early', 'trialGraspOn':'Late'}
+# Define the reference events and time window defining each epoch
+epoch_window_map = {'Early':    {'event': 'trialRewardDrop', 'window': [-300,   500]},
+                    'Late':     {'event': 'trialGraspOn',    'window': [-300,   500]}}
+current_time = 0
+for epoch in epoch_window_map:
+    epoch_window_map[epoch]['time'] = current_time - epoch_window_map[epoch]['window'][0]
+    # current_time = epoch_window_map[epoch]['time'] + epoch_window_map[epoch]['window'][1]
+
+#Define directories of data
+data_dir = 'Data/Sorted_Inactivation'
+matlab_dir = f'{data_dir}/matlabFiles'
+sorting_dir = f'{data_dir}/sortingNotes'
+summary_dir = f'Data/Processed/Summary/earlyLate'
+
+lat_map = {'c':'contralateral', 'i':'ipsilateral'}
+hand_list = ['R', 'L']
+binsize = 5
+all_x = np.arange(0, current_time, binsize)
+kernel_width = 25
+full_window = np.arange(-1000, 1000+binsize, binsize)
+new_popdict = True
+pca_dir = f'{summary_dir}/PCA_b{binsize}_k{kernel_width}'
+
+durs_file_name = f'{summary_dir}/durs_list_merged{len(monkey_name_map.keys())}.p'
+if not os.path.exists(pca_dir):
+    os.mkdir(pca_dir)
+
+all_sdf_filename = f'{summary_dir}/merged_sdfDict_bin{binsize}_k{kernel_width}_earlyLate.p'
+all_monkeys_filename = f'{summary_dir}/monkey_indices_earlyLate.p'
+all_psth_filename = f'{summary_dir}/trialPSTH_bin{binsize}_k{kernel_width}_earlyLate.p'
+
+with open(all_monkeys_filename, 'rb') as monkey_idcs_file:
+    all_monkey_indices = pkl.load(monkey_idcs_file)
+with open(all_sdf_filename, 'rb') as sdf_file:
+    all_sdf_dict = pkl.load(sdf_file)
+with open(all_psth_filename, 'rb') as psth_file:
+    all_psth_dict = pkl.load(psth_file)
+
+pop_filename = f'{pca_dir}/pop_dict_b{binsize}_k{kernel_width}_earlyLate.p'
+merged_pop_dict = {}
+for event in epoch_window_map.keys():
+    merged_pop_dict[event] = {'sdf': [], 'idx': 0, 'psth': []}
+if os.path.exists(pop_filename) and not new_popdict:
+    with open(pop_filename, 'rb') as pop_file:
+        pop_tuple = pkl.load(pop_file)
+        merged_pop_dict= pop_tuple
+        print('Population Dictionary Loaded')
+else:
+    merged_population_dict = {}
+    merged_psth_dict = {}
+    region_map = {'idx':0}
+    condition_map  = {}
+    cortex_map = {'idx':0}
+    sdf_fig, sdf_axs = plt.subplots(ncols=3, nrows=1, figsize=(12,5))
+    cond_color = {'i_horizontal': 'tab:blue', 'c_horizontal':'tab:orange',
+                  'i_vertical':'tab:green', 'c_vertical':'tab:red'}
+    ax_dict = {'M1':sdf_axs[0], 'PMd':sdf_axs[1], 'PMv':sdf_axs[2]}
+    x_ticks = []
+    for area in all_sdf_dict.keys():
+        region, orientation = area.split('_')
+        side, cortex = region[0], region[1:]
+        sdf_ax = ax_dict[cortex]
+        if orientation not in merged_population_dict.keys():
+            merged_population_dict[orientation] = {}
+            merged_psth_dict[orientation] = {}
+        if cortex not in condition_map.keys():
+            condition_map[cortex] = {'idx':0}
+        for event_idx, event in enumerate(epoch_window_map.keys()):
+            if event not in merged_population_dict[orientation].keys():
+                merged_population_dict[orientation][event] = []
+                merged_psth_dict[orientation][event] = []
+
+            sdf = all_sdf_dict[area][event]
+            sdf = sdf[:,0].T
+            psth = np.stack(all_psth_dict[area][event]).transpose(0,2,1)
+            merged_psth_dict[orientation][event].append(psth)
+            sdf_max = sdf.max(axis=1)+5*binsize/1000
+            # zero_mask = sdf.max(axis=1) > 0
+            sdf = sdf/np.repeat(np.expand_dims(sdf_max, 1), sdf.shape[1], axis=1)
+            sdf_mean, sdf_std = sdf.mean(axis=0), sdf.std(axis=0)
+            merged_population_dict[orientation][event].append(sdf)
+            if event_idx == 0:
+                if cortex not in cortex_map.keys():
+                    cortex_map[cortex] = [cortex_map['idx'], cortex_map['idx']]
+                cortex_map[cortex][1]+= sdf.shape[0]
+                cortex_map['idx'] += sdf.shape[0]
+            if region not in region_map.keys():
+                region_boundaries = [region_map['idx'], region_map['idx'] + sdf.shape[0]]
+                region_map[region] = region_boundaries
+                region_map['idx'] += sdf.shape[0]
+            or_key = f'{side}_{orientation}'
+            if or_key not in condition_map[cortex].keys():
+                region_boundaries = [condition_map[cortex]['idx'], condition_map[cortex]['idx'] + sdf.shape[0]]
+                condition_map[cortex][or_key] = region_boundaries
+                condition_map[cortex]['idx'] += sdf.shape[0]
+            x = np.arange(epoch_window_map[event]['window'][0], epoch_window_map[event]['window'][1], step=binsize)
+            x_time = 0
+            window_width = 250
+            window_buffer = 75
+            total_window = 2*window_width + window_buffer
+            x_idcs= np.where((x>=x_time-window_width) & (x<x_time+window_width))
+            x_tick = x_time+total_window*event_idx
+            if x_tick not in x_ticks:
+                x_ticks.append(x_tick)
+            sdf_ax.fill_between(x=x[x_idcs]+total_window*event_idx, y1 =(sdf_mean+sdf_std)[x_idcs],
+                                y2=(sdf_mean-sdf_std)[x_idcs], color=cond_color[or_key], alpha = 0.2)
+            sdf_ax.plot(x[x_idcs]+total_window*event_idx, sdf_mean[x_idcs], color=cond_color[or_key], label=or_key)
+            merged_pop_dict[event]['sdf'].append(sdf)
+            merged_pop_dict[event]['psth'].append(psth)
+    for cortex, sdf_ax in ax_dict.items():
+        sdf_ax.set_title(cortex)
+        sdf_ax.set_ylabel('SDF')
+        sdf_ax.set_xticks(ticks=x_ticks, labels = ['Cue', 'Grasp'])
+        for x_tick in x_ticks:
+            sdf_ax.axvline(x=x_tick, color='black')
+        # sdf_ax.legend()
+    sdf_fig.suptitle(f'Mean SDF, Window {window_width}ms')
+    sdf_fig.tight_layout()
+    sdf_fig.savefig(f'{pca_dir}/MeanSDF.png', dpi=300, bbox_inches='tight')
+
+    for orientation in merged_population_dict.keys():
+        for event, sdf_list in merged_population_dict[orientation].items():
+            merged_population_dict[orientation][event] = np.vstack(sdf_list)
+    for orientation in merged_psth_dict.keys():
+        for event, psth_list in merged_psth_dict[orientation].items():
+            merged_psth_dict[orientation][event] = np.vstack(psth_list)
+    del region_map['idx']
+    for cor in condition_map.keys():
+        del condition_map[cor]['idx']
+    del cortex_map['idx']
+    merged_pop_sdf = {}
+    merged_pop_psth = {}
+    for event in epoch_window_map.keys():
+        del merged_pop_dict[event]['idx']
+        merged_pop_sdf[event] = torch.Tensor(np.vstack(merged_pop_dict[event]['sdf']))
+        merged_pop_psth[event] = torch.Tensor(np.vstack(merged_pop_dict[event]['psth']))
+        merged_pop_dict[event]['sdf'] = merged_pop_sdf[event]
+        merged_pop_dict[event]['psth'] = merged_pop_psth[event]
+    pop_psth_filename = f'{summary_dir}/merged{len(monkey_name_map.keys())}_psth_earlyLate.p'
+    merged_pop_dict['region_map'] = region_map
+    merged_pop_dict['cortex_map'] = cortex_map
+    merged_pop_dict['condition_map'] = condition_map
+    with open(pop_filename, 'wb') as pop_file:
+        pkl.dump(merged_pop_dict, pop_file)
+
+pca_overwrite = True
+cortex_map = merged_pop_dict['cortex_map']
+# merged_pop_sdf = merged_pop_dict['sdf']
+# merged_pop_psth = merged_pop_dict['psth']
+condition_map = merged_pop_dict['condition_map']
+n_dims = 5 #Dimension of subspaces on which to compute angles
+n_angles = 1 #Number of angles to plot (Should be 1)
+full_angles = {}
+n_cort = len(cortex_map.keys())-1
+cortex_colors = {'M1':'b', 'PMd':'r', 'PMv':'g'}
+region_var_explained = {}
+
+monkeys = {}
+cond_data = {}
+cond_neuron_dict = {}
+cortex_angles = {}
+cos = torch.nn.CosineSimilarity(dim=0, eps=1e-8)
+vel_fig, vel_axs = plt.subplots(nrows=1, ncols=3, figsize=(12,5))
+for cort_idx, cortex in enumerate(cortex_map.keys()):
+    monkey_indices = all_monkey_indices[cortex]
+    # if not os.path.exists(f'{pca_dir}/{cortex}'):
+    #     os.mkdir(f'{pca_dir}/{cortex}')
+    del monkey_indices['count']
+    monkey_indices['All'] = np.arange(0, max([e[-1] for e in list(monkey_indices.values())])+1)
+    cort = cortex_map[cortex]
+    for monkey in monkey_indices.keys():
+        if monkey == 'count':
+            continue
+        if monkey not in monkeys.keys():
+            monkeys[monkey] = Monkey(monkey, kernel_width, binsize, epoch_window_map)
+        monkey_obj = monkeys[monkey]
+        monkey_obj.get_indices(monkey_indices, cortex)
+        monkey_obj.set_condition_map(condition_map)
+        monkey_obj.get_savedir(summary_dir)
+        for event in epoch_window_map.keys():
+            sdf = merged_pop_sdf[event][cort[0]:cort[1]]
+            psth = merged_pop_psth[event][cort[0]:cort[1]]  # cortex sdf
+            cortex_sdf = monkey_obj.get_sdf(sdf, cortex, epoch=event)
+            cortex_svd = monkey_obj.get_svd(cortex, epoch=event)
+            monkey_obj.get_trial_psth(psth, cortex, epoch=event)
+
+            V_cort = cortex_svd['Full']['V']
+            S_cort = cortex_svd['Full']['S']
+            fig = plt.figure(cortex, figsize=(7, 8))
+            ax2 = fig.add_subplot(2, 2, 1)
+            ax2a = fig.add_subplot(2, 2, 4)
+            ax3 = fig.add_subplot(2, 2, 2, projection='3d')
+            ax_var = fig.add_subplot(2, 2, 3)
+            cond_neuron_dict[monkey] = {}
+            cond_data[monkey] = []
+            cortex_angles[monkey] = {}
+            split_Vs = {}
+            monkey_index = np.array(monkey_indices[monkey])
+            if monkey != 'All':
+                m_neurons = len(monkey_index)
+            else:
+                m_neurons = max(cort)
+            for idx, (cond, c_ind) in enumerate(condition_map[cortex].items()):
+                cond_psth = monkey_obj.cortices[cortex]['psth'][event][cond]
+                split_psth = torch.tensor_split(cond_psth, 2, dim=1)
+                split_sdf = []
+                split_V = []
+                for sub_psth in split_psth:
+                    sub_sdf, _ = gen_sdf(sub_psth.sum(dim=1).T, w=kernel_width, bin_size=binsize, ftype='Gauss', multi_unit=True)
+                    split_sdf.append(sub_sdf[:, 0])
+                    split_sdf_square = center_sdf(torch.Tensor(sub_sdf[:, 0]))['square']
+                    U, S, V = torch.linalg.svd(split_sdf_square, full_matrices=False)
+                    split_V.append(V.T)
+                split_Vs[cond] = split_V
+                cond_sdf = cortex_sdf[cond]
+                cond_svd = cortex_svd[cond]
+                V_cond = cond_svd['V']
+                cond_pc_neurons = V_cond[:, :3].abs().sort(dim=0, descending=True)
+                cond_proj = cond_sdf.T @ V_cort #Use full-cortex vectors for projections
+                cond_vel = velocity(cond_proj, dims=3, dt=binsize)
+                cond_data[monkey].append(cond_sdf.T)
+                cond_event_means = {}
+                cond_event_stds = {}
+                cond_neuron_dict[monkey][cond] = {'sdf': cond_sdf, 'indices': cond_pc_neurons.indices, 'velocity': cond_vel}
+                prop_cycle = plt.rcParams['axes.prop_cycle']
+                clrs = prop_cycle.by_key()['color']
+                rgb = mpl.colors.ColorConverter.to_rgb
+
+                if monkey == 'All':
+                    x = np.arange(cond_vel.shape[0])*binsize
+                    vel_ax = vel_axs[cort_idx]
+                    vel_ax.plot(x, cond_vel/cond_vel.max(), color = 'tab:red')
+                    vel_ax.plot(x, cond_sdf[:, :-1].mean(dim=0)/cond_sdf[:, :-1].mean(dim=0).max(), color='tab:blue')
+                    if idx==0:
+                        legend_lines = [Line2D([0], [0], color='tab:blue', lw=4),
+                                        Line2D([0], [0], color='tab:red', lw=4)]
+                    for epoch in epoch_window_map.keys():
+                        event_time= epoch_window_map[epoch]['time']
+                        window_end = event_time + epoch_window_map[epoch]['window'][1]
+                        vel_ax.axvline(event_time, color='black')
+                        vel_ax.axvline(window_end, color='gray')
+
+                # var_plot_pcs = 'all'
+                var_plot_pcs = 20
+                cond_cov = cortex_svd[cond]['cov']
+                cond_var_sum = torch.cumsum(torch.diagonal(V_cond.T @ cond_cov @ V_cond), dim=0)
+                cond_var_explained = cond_var_sum / cond_var_sum.max()
+                cortex_neurons = monkey_obj.cortices[cortex]['neurons']
+                if var_plot_pcs == 'all':
+                    var_plot_pcs = cortex_neurons
+                else:
+                    pcs_plotted = min(cortex_neurons, var_plot_pcs)
+                ax_var.scatter(np.arange(1, pcs_plotted + 1), cond_var_explained[:pcs_plotted], label=cond[:6])
+                x, y, z = cond_proj[:, :3].T
+                event_idx = int(epoch_window_map[event]['time'] / binsize)
+                ax3.plot(x, y, z, label=cond)
+                ax3.scatter(x[event_idx], y[event_idx], z[event_idx], c='black')
+                ax3.scatter(x[0], y[0], z[0], c='black', marker='^')
+                ax2.plot(x, y, label=cond)
+                ax2.scatter(x[event_idx], y[event_idx], c='black')
+                ax2.scatter(x[0], y[0], c='black', marker='^')
+            if monkey == 'All':
+                vel_ax.set_title(f'{cortex}')
+                vel_ax.set_xlabel(f'Time (ms)')
+                vel_ax.set_ylabel(f'Relative Magnitude')
+            cond_list = list(condition_map[cortex].keys())
+            var = S_cort.square()
+            var_sum = torch.cumsum(var, 0)
+            ax_var.scatter(range(1, pcs_plotted + 1), var_sum[:pcs_plotted] / var_sum[-1], label='All', color='k')
+            ax_var.set_xlabel('PC index')
+            ax_var.set_ylabel('Variance Explained')
+            ax_var.set_ylim([0, 1.05])
+            ax_var.legend(ncol=2, loc='lower right')
+
+            ax2.set_title(f'Conditions plotted onto first 2 {cortex} PCs')
+            ax3.set_title(f'Conditions plotted onto first 3 {cortex} PCs')
+            ax3.set_xlabel('PC 1')
+            ax3.set_ylabel('PC 2')
+            ax3.set_xlabel('PC 1')
+            ax2.set_xlabel('PC 1')
+            ax2.set_ylabel('PC 2')
+            ax2.legend()
+            if monkey == 'All':
+                vel_ax.legend(legend_lines, ['Mean SDE', 'Velocity'])
+            for n_dims in [5]:
+                fig.delaxes(ax2a)
+                ax2a = fig.add_subplot(2, 2, 4)
+                for cond in cond_list:
+                    angles = {}
+                    V_cond = monkey_obj.cortices[cortex]['SVD'][event][cond]['V']
+                    for o_cond in cond_list:
+                        V_ocond = monkey_obj.cortices[cortex]['SVD'][event][o_cond]['V']
+                        if o_cond == cond:
+                            Vs = split_Vs[cond]
+                            G = Vs[0][:,:n_dims].T@Vs[1][:,:n_dims]
+                        else:
+                            G = V_cond[:,:n_dims].T@V_ocond[:,:n_dims]
+                        alignment = torch.linalg.svdvals(G)
+                        angles[o_cond] = alignment
+                    cortex_angles[monkey][cond] = {'v': V_cond, 'angles': angles}
+                mean_plot = True
+                mean_neurons = 5
+                plot_mean = ''
+                if mean_plot:
+                    plot_mean += f'_mean{mean_neurons}'
+                # sns.move_legend(ax3, 'upper center', ncols=2, bbox_to_anchor=(.5, -.1))
+                conds = len(cortex_angles[monkey].keys())
+                angle_matrix = np.empty((conds, conds * n_angles))
+                mean_matrix = np.empty((conds, conds))
+                cond_matrix = np.empty((conds, conds), dtype=object)
+                for c_i, cond in enumerate(cond_list):
+                    for c_j, o_cond in enumerate(cond_list[:]):
+                        angle_matrix[c_i, c_j * min(n_angles, m_neurons):(c_j + 1) * min(n_angles, m_neurons)] = (
+                            torch.Tensor(cortex_angles[monkey][cond]['angles'][o_cond][:n_angles]))
+                        mean_matrix[c_i, c_j] = cortex_angles[monkey][cond]['angles'][o_cond][:1].mean()
+                        cond_matrix[c_i, c_j] = f'{cond}:{o_cond}'
+                angle_file_name = f'{pca_dir}/AngleMatrix_{cortex}_monkey{monkey}_PCdims{n_dims}_{event}.p'
+                with open(angle_file_name, 'wb') as angle_file:
+                    pkl.dump((mean_matrix, cond_matrix), angle_file)
+                im = ax2a.pcolor(angle_matrix, cmap=mpl.colormaps['magma_r'],
+                                 norm=colors.Normalize(vmin=0.6, vmax=1, clip=True))
+                div = make_axes_locatable(ax2a)
+                cax = div.append_axes('right', size='5%', pad=0.05)
+                fig.colorbar(im, cax=cax, orientation='vertical')
+
+                ax2a.set_yticks(ticks=np.arange(conds)+.5, labels=[c[:3] for c in cond_list])
+                ax2a.set_xticks(ticks=(np.arange(conds)+.5)*n_angles, labels=[c[:3] for c in cond_list])
+                # ax2a.set_xticks(ticks=[n_angles / 2, 3 * n_angles / 2, 5 * n_angles / 2, 7 * n_angles / 2], labels=cond_list)
+                ax2a.vlines(n_angles*np.arange(conds)[1:], 0, conds, colors='w')
+                ax2a.hlines(np.arange(conds)[1:], 0, conds * n_angles, colors='w')
+                # ax2a.colorbar(label='Cos Sim.')
+                ax2a.set_title(f'Principal Angles for {n_dims}-dim PC Subspaces')
+                bbox_props = dict(facecolor='black', alpha=0.4, edgecolor='none', pad=0.1)
+                for c_i in np.arange(conds):
+                    for c_j, m in enumerate(mean_matrix[c_i]):
+                        if c_i == c_j:
+                            col = 'yellow'
+                        else:
+                            col = 'white'
+                        ax2a.text(y=c_i + 0.5, x=n_angles*(2*c_j+1)/ 2, s=f'{mean_matrix[c_i, c_j]:.3f}', color=col,
+                                      va='center', ha='center', bbox=bbox_props)
+                ax2a.invert_yaxis()
+
+                plt.suptitle(f'PCA for Monkey {monkey_obj.name}, {event} Trial\n{cortex}, {cortex_neurons} Neurons, {n_dims}-dim Subspace')
+                plt.tight_layout()
+                if not os.path.exists(f'{pca_dir}/{monkey}'):
+                    os.mkdir(f'{pca_dir}/{monkey}')
+                fig.savefig(f'{pca_dir}/{monkey}/PCTraj3D_{cortex}_monkey{monkey}_PCdims{n_dims}_{event}.png',
+                            dpi=300, bbox_inches='tight')
+            plt.close(fig)
+    vel_fig.tight_layout()
+    vel_fig.savefig(f'{pca_dir}/PCVelocity_{event}.png', dpi=300, bbox_inches='tight')
+
+base_monkey = monkeys['All']
+pc_fig, pc_axs = plt.subplots(nrows=1, ncols=3, figsize=(12, 5))
+color_map = {'R': 'tab:red', 'G': 'tab:green', 'Y': 'tab:orange', 'B': 'tab:blue'}
+for event in epoch_window_map.keys():
+    for c_idx, cortex in enumerate(cortex_map.keys()):
+        reg_ax = pc_axs[c_idx]
+        handles = []
+        labels = []
+        base_pcs = base_monkey.cortices[cortex]['SVD'][event]['Full']['V']
+        new_handle = True
+        for c_idx, condition in enumerate(base_monkey.condition_map[cortex].keys()):
+            base_sdf = base_monkey.cortices[cortex]['SVD'][event][condition]['sdf']
+            base_proj = base_sdf.T @ base_pcs
+            x, y, z = base_proj[:, :3].T
+            if new_handle:
+                line, = reg_ax.plot(x, y, color='black')
+                handles.append(line)
+                labels.append('All')
+                new_handle=False
+            else:
+                reg_ax.plot(x,y, color='black')
+            reg_ax.scatter(x[event_idx], y[event_idx], c='black')
+            reg_ax.scatter(x[0], y[0], c='black', marker='^')
+        # reg_ax.plot(x,y, label='All', color='black')
+        reg_ax.set_title(cortex)
+        reg_ax.set_xlabel('PC 1')
+        reg_ax.set_ylabel('PC 2')
+        for m_name, monkey in monkeys.items():
+            if m_name == 'All':
+                continue
+            # monkey_sdf = torch.zeros_like(base_sdf)
+            if monkey.cortices[cortex]['neurons']<=5:
+                continue
+            new_handle = True
+            for c_idx, condition in enumerate(base_monkey.condition_map[cortex].keys()):
+                monkey_sdf = torch.zeros_like(base_sdf)
+                monkey_sdf[monkey.monkey_indices[cortex]] = monkey.cortices[cortex]['SVD'][event][condition]['sdf']
+                monkey_pc_norm = base_pcs[monkey.monkey_indices[cortex]].norm(dim=0)
+                monkey_proj = (monkey_sdf.T @ base_pcs) / monkey_pc_norm**2
+                x, y, z = monkey_proj[:, :3].T
+                if new_handle:
+                    line, = reg_ax.plot(x, y, label=m_name, color=color_map[m_name], alpha=0.5)
+                    handles.append(line)
+                    labels.append(m_name)
+                    new_handle = False
+                else:
+                    reg_ax.plot(x, y, color= color_map[m_name], alpha = 0.5)
+                reg_ax.scatter(x[event_idx], y[event_idx], c='black')
+        reg_ax.legend(title='Monkey', handles=handles, labels=labels)
+    pc_fig.suptitle(f'Monkey Trajectories in Joint Monkey PC Space,\n{event} Trial')
+    pc_fig.tight_layout()
+    pc_fig.savefig(f'{pca_dir}/Joint_PCTrajectories_{event}.png', dpi=300, bbox_inches='tight')
+    plt.close(pc_fig)
+
+
+    diff_mode = 'absolute'
+    # diff_mode = 'relative'
+    for monkey in monkey_indices.keys():
+        comb_fig, comb_axs = plt.subplots(nrows=3, ncols=1, figsize=(10, 12))
+        width = 0.14
+        for cort_idx, cortex in enumerate(cortex_map.keys()):
+            cort_ax = comb_axs[cort_idx]
+            angle_file_name = f'{pca_dir}/AngleMatrix_{cortex}_monkey{monkey}_PCdims{n_dims}_{event}.p'
+            with open(angle_file_name, 'rb') as angle_file:
+                mean_matrix, cond_matrix = pkl.load(angle_file)
+            mean_locs = np.tril(mean_matrix, k=-1)>0
+            mean_vals = mean_matrix[mean_locs]
+            cond_combs = cond_matrix[mean_locs]
+            comb_dict = {}
+            for c_i, start_comb in enumerate(cond_combs):
+                cond_label = f'{start_comb[:3]}:{start_comb.split(':')[1][:3]}'
+                comb_dict[cond_label] = []
+                start_mean = mean_vals[c_i]
+                for c_j, o_comb in enumerate(cond_combs[:]):
+                    mean_diff = mean_vals[c_j] - start_mean
+                    if diff_mode == 'absolute':
+                        diff_val = mean_diff
+                    else:
+                        diff_val = mean_diff/start_mean
+                    comb_dict[cond_label].append(diff_val)
+            multiplier = 0
+            x=  np.arange(len(cond_combs))
+            tick_labels = []
+            for comb, diff in comb_dict.items():
+                offset=width*multiplier
+                rects = cort_ax.bar(x+offset, diff, width, label = comb)
+                cort_ax.bar_label(rects, padding=3, fmt='%.2f')
+                multiplier+=1
+                tick_labels.append(f'{comb[:3]}:{comb.split(':')[1][:3]}')
+                cort_ax.axvline(x=multiplier-width, color='grey')
+            cort_ax.set_ylabel(f'{diff_mode.capitalize()} Difference')
+            cort_ax.set_title(f'{cortex}')
+            cort_ax.set_xticks(x+len(cond_combs)/2*width, comb_dict.keys())
+            cort_ax.legend(ncols = 3)
+            cort_ax.axhline(y=0, color='black')
+            cort_ax.set_ylim([-.38, .38])
+            cort_ax.set_xlim([-width, len(cond_combs)-width])
+        # comb_fig.suptitle(f'{diff_mode.capitalize()} Difference in Principal Angles Across Conditions')
+        plt.tight_layout()
+        if not os.path.exists(f'{pca_dir}/{m_name}'):
+            os.mkdir(f'{pca_dir}/{m_name}')
+        comb_fig.savefig(f'{pca_dir}/{m_name}/PrincipalAngleDiff_monkey{monkey}_{diff_mode}_{event}.png', dpi=300,
+                         bbox_inches='tight')
+        plt.close(comb_fig)
+
+cort_colors = {'M1': 'tab:blue', 'PMd': 'tab:orange', 'PMv': 'tab:green'}
+n_pcs = 2
+for vel in [True, False]:
+    for event in epoch_window_map.keys():
+        for m_name, monkey in monkeys.items():
+            pc_fig, pc_axs = plt.subplots(nrows=n_pcs, ncols=4, figsize=(12, 3 * n_pcs))
+            for cort_idx, cortex in enumerate(cortex_map.keys()):
+                monkey_pcs = monkey.cortices[cortex]['SVD'][event]['Full']['V']
+                # cort_axs = pc_axs[cort_idx]
+                cort_axs = pc_axs
+                for cond_idx, condition in enumerate(monkey.condition_map[cortex].keys()):
+                    cond_sdf = monkey.cortices[cortex]['SVD'][event][condition]['sdf']
+                    cond_proj = cond_sdf.T@monkey_pcs
+                    # cond_axs = cort_axs[cond_idx]
+                    for pc in range(n_pcs):
+                        # print(f'PC = {pc}')
+                        pc_ax = cort_axs[pc][cond_idx]
+                        y_traj = cond_proj.T[pc]
+                        y_vel = y_traj[1:]-y_traj[:-1]
+                        if vel:
+                            y = y_vel
+                            name='Velocity'
+                        else:
+                            y= y_traj
+                            name=''
+                        window= epoch_window_map[event]['window']
+                        x = np.arange(window[0], window[1], step=binsize)
+                        if vel:
+                            x= x[:-1]
+                        if y[5] <0:
+                            y*= -1
+                        pc_ax.plot(x, y, color=cort_colors[cortex], label=cortex)
+                        if cort_idx == len(cortex_map.keys())-1:
+                            # event_time = epoch_window_map[epoch]['time']
+                            event_time = 0
+                            # window_end = event_time + epoch_window_map[epoch]['window'][1]
+                            pc_ax.axvline(event_time, color='black', alpha=0.5)
+                            pc_ax.axhline(0, color='black', alpha=0.7)
+                            # pc_ax.legend(title='Cortex')
+                            if pc == 0:
+                                pc_ax.set_title(f'{condition}')
+                            else:
+                                pc_ax.set_xlabel('Time (ms)')
+                            if cond_idx == 0:
+                                pc_ax.set_ylabel(f'PC {pc+1}')
+                handles, labels = pc_ax.get_legend_handles_labels()
+                pc_fig.suptitle(f'First PCs for each Cortex, Monkey {m_name}\n{event} Trial')
+                pc_fig.tight_layout()
+                if not os.path.exists(f'{pca_dir}/{m_name}'):
+                    os.mkdir(f'{pca_dir}/{m_name}')
+            pc_fig.legend(handles, labels, title='Cortex', loc='lower center', bbox_to_anchor=(0.5, -.1), ncol=3, frameon = False)
+            pc_fig.tight_layout()
+            pc_fig.savefig(f'{pca_dir}/{m_name}/CoupledPCs{name}_monkey{m_name}_{event}.png', dpi=300, bbox_inches='tight')
+            plt.close(pc_fig)
+# for m_name, monkey in monkeys.items():
+#     monkey.save_monkey()
+#     print(f'Saving Monkey {m_name}')
+# monkey_dict_filename = f'{pca_dir}/allMonkeyDict.p'
+# with open(monkey_dict_filename, 'wb') as monkey_dict_file:
+#     pkl.dump(monkeys, monkey_dict_file)

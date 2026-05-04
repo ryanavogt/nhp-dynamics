@@ -18,7 +18,6 @@ from pandas.plotting import table
 import seaborn as sns
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
 
-sns.set()
 sns.set_style(style='white')
 
 """
@@ -26,18 +25,17 @@ Define maps for reference:
 monkey_name_map: Map labels to full names   - Name label (R, G) -> Full name (Red, Green)
 event_map: Name of events for plotting      - Raw event name -> Shortened event name (for labels on plots)
 """
-# monkey_name_map = {'R': 'Red', 'G': 'Green'}
 monkey_name_map = {'G':'Green', 'R':'Red', 'Y':'Yellow', 'B':'Blue'}
-event_map = {'trialRewardDrop': 'Cue', 'trialGraspOn':'Grasp On'}
+event_map = {'trialRewardDrop': 'Early', 'trialGraspOn':'Late'}
 # Define the reference events and time window defining each epoch
-epoch_window_map = {'Cue':      {'event': 'trialRewardDrop', 'window': [-200,   200]},
-                   'Grasp On':  {'event': 'trialGraspOn',    'window': [-100,   500]}}
+epoch_window_map = {'Early':        {'event': 'trialRewardDrop', 'window': [-500,   300]},
+                    'Late':         {'event': 'trialGraspOn',    'window': [-500,   300]}}
 
 #Define directories of data
 data_dir = 'Data/Sorted_Inactivation'
 matlab_dir = f'{data_dir}/matlabFiles'
 sorting_dir = f'{data_dir}/sortingNotes'
-summary_dir = f'Data/Processed/Summary'
+summary_dir = f'Data/Processed/Summary/earlyLate'
 
 if not os.path.exists(summary_dir):
     os.mkdir(summary_dir)
@@ -49,7 +47,7 @@ binsize = 5
 kernel_width = 25
 trial_count = 100
 load_override_preprocess = False
-load_override = False
+load_override = True
 
 # Extract All Sessions from their Sorting Notes
 file_list = []
@@ -73,17 +71,16 @@ area_summary_dict = {}
 all_areas = []
 all_spikes = {}
 all_conditions = {}
-all_durs = {}
 all_monkey_indices = {'M1': {'count':0}, 'PMd':{'count':0}, 'PMv':{'count':0}}
-all_events =    {'M1': {'Cue':[], 'Grasp On':[]},
-                 'PMd':{'Cue':[], 'Grasp On':[]},
-                 'PMv':{'Cue':[], 'Grasp On':[]}}
-summary_file_name = f'{summary_dir}/spike_summary_merged{len(monkey_name_map.keys())}.p'
-spike_file_name = f'{summary_dir}/spike_list_merged{len(monkey_name_map.keys())}.p'
-event_file_name = f'{summary_dir}/event_list_merged{len(monkey_name_map.keys())}.p'
-condition_file_name = f'{summary_dir}/condition_list_merged{len(monkey_name_map.keys())}.p'
-durs_file_name = f'{summary_dir}/durs_list_merged{len(monkey_name_map.keys())}.p'
-monkey_file_name = f'{summary_dir}/monkey_indices_merged{len(monkey_name_map.keys())}.p'
+all_events =    {'M1': {'Early':[], 'Late':[]},
+                 'PMd':{'Early':[], 'Late':[]},
+                 'PMv':{'Early':[], 'Late':[]}}
+summary_file_name = f'{summary_dir}/spike_summary_earlyLate.p'
+spike_file_name = f'{summary_dir}/spike_list_earlyLate.p'
+event_file_name = f'{summary_dir}/event_list_earlyLate.p'
+condition_file_name = f'{summary_dir}/condition_list_earlyLate.p'
+durs_file_name = f'{summary_dir}/durs_list_earlyLate.p'
+monkey_file_name = f'{summary_dir}/monkey_indices_earlyLate.p'
 if os.path.exists(summary_file_name) and not load_override_preprocess:
     with open(summary_file_name, 'rb') as summary_file:
         area_summary_dict = pkl.load(summary_file)
@@ -96,7 +93,6 @@ if os.path.exists(summary_file_name) and not load_override_preprocess:
     print('Spike File Loaded')
 else:
     for date, monkey in zip(date_strings, monkey_labels):
-        print(date)
         monkey_folder = f'Monkey_{monkey_name_map[monkey]}'
         date_folder = f'{date[0:4]}_{date[4:6]}_{date[6:]}'
         trial_dir = f'Data/Processed/{monkey_folder}/{date_folder}' #Folder where to find the session data
@@ -104,14 +100,6 @@ else:
             trial_data = pkl.load(trial_file)
         with open(f'{trial_dir}/eventMasks.p', 'rb') as event_mask_file:
             full_mask = pkl.load(event_mask_file)
-        if monkey in ['R', 'G']:
-            with open(f'{trial_dir}/eventDurs.p', 'rb') as eventDurs_file:
-                eventDurs = pkl.load(eventDurs_file)
-            for event in eventDurs.keys():
-                if event not in all_durs:
-                    all_durs[event] = [eventDurs[event]]
-                else:
-                    all_durs[event].append(eventDurs[event])
         area_list = [f for f in glob.glob(f'{trial_dir}/spikeTimes_*')] #All brain regions in folder (e.g. M1R, PMdR, PMvL, etc.)
         for area in area_list:
             area_name = area.split('_')[-1].split('.')[0]
@@ -127,15 +115,12 @@ else:
             if area_label not in all_areas:
                 all_areas.append(area_label)
                 region_spike_list = []
-                # all_conditions[area_label] = [trial_data['handOrien'][full_mask]]
                 region_condition_list = []
             else:
                 region_spike_list = all_spikes[area_label]
-                # all_conditions[area_label].append(trial_data['handOrien'][full_mask])
                 region_condition_list = all_conditions[area_label]
             for channel in spike_times:
                 channel_spikes = spike_times[channel] #Extract spike times for a single channel
-                # grasp_times = trial_data['trialGraspOn'][channel_spikes[:, -1].astype(int)-1] #Set Grasp onset time to 0
                 if channel_spikes.shape[0]>0:
                     channel_neurons = channel_spikes[:, 0].max()
                     channel_conditions = np.empty((len(trial_data['handOrien']), 2), dtype='str_')
@@ -172,7 +157,6 @@ else:
                                 area_summary_dict[region_key][event]['neurons'] += channel_neurons
                                 area_summary_dict[region_key][event]['trial_idcs'].append(channel_spikes[spike_mask, -1])
                     for neuron in range(channel_neurons):
-                        # region_condition_list.append(channel_conditions[full_mask])
                         region_condition_list.append(channel_conditions)
                         area_indices[monkey].append(area_neuron_index)
                         area_neuron_index += 1
@@ -187,33 +171,9 @@ else:
         pkl.dump(all_events, event_file)
     with open(condition_file_name, 'wb') as condition_file:
         pkl.dump(all_conditions, condition_file)
-    with open(durs_file_name, 'wb') as durs_file:
-        for event in all_durs.keys():
-            all_durs[event] = np.hstack(all_durs[event])
-        pkl.dump(all_durs, durs_file)
     with open(monkey_file_name, 'wb') as monkey_file:
         pkl.dump(all_monkey_indices, monkey_file)
     print('Spike File Saved')
-
-regions = all_monkey_indices.keys()
-monkeys = monkey_name_map.keys()
-region_neurons = {}
-for region in regions:
-    region_neurons[region] = {}
-    for monkey in monkeys:
-        region_neurons[region][monkey] = len(all_monkey_indices[region][monkey])
-neuron_df = pd.DataFrame.from_dict(region_neurons, orient='index')
-fig_dims = (5, 1.5)
-neuron_fig = plt.figure(figsize=fig_dims)
-ax = plt.subplot(111, frame_on=False)
-ax.set_xticks([])
-ax.xaxis.set_label_position('top')
-ax.set_yticks([])
-table(ax, neuron_df, loc='center')
-plt.title(f'Monkey Region Neurons')
-plt.savefig(f'Data/Processed/Summary/monkeyNeurons.png', dpi = 300, bbox_inches = 'tight')
-
-neuron_df.to_csv(f'Data/Processed/Summary/monkeyNeurons.csv')
 
 """
 Generate plots of the max spiking rates for each area, side, and orientation.
@@ -222,15 +182,12 @@ Scale the rate to the max rate for contralateral side. Apply that scale to ipsil
 skip = False
 area_mean_rate = {}
 event_mean_rate = {}
-all_sdf_filename = f'{summary_dir}/merged_sdfDict_bin{binsize}_k{kernel_width}_merged{len(monkey_name_map.keys())}.p'
-area_mean_filename = f'{summary_dir}/areaMeanRates_bin{binsize}_k{kernel_width}_merged{len(monkey_name_map.keys())}.p'
-all_psth_filename = f'{summary_dir}/trialPSTH_bin{binsize}_k{kernel_width}_merged{len(monkey_name_map.keys())}.p'
+all_sdf_filename = f'{summary_dir}/merged_sdfDict_bin{binsize}_k{kernel_width}_earlyLate.p'
+area_mean_filename = f'{summary_dir}/areaMeanRates_bin{binsize}_k{kernel_width}_earlyLate.p'
+all_psth_filename = f'{summary_dir}/trialPSTH_bin{binsize}_k{kernel_width}_earlyLate.p'
 if os.path.exists(all_sdf_filename) and not load_override:
     with open(all_sdf_filename, 'rb') as sdf_file:
         all_sdf_dict = pkl.load(sdf_file)
-    with open(area_mean_filename, 'rb') as area_mean_file:
-        mean_rates = pkl.load(area_mean_file)
-        area_mean_rate, event_mean_rate = mean_rates
     print(f'SDF Dictionary Loaded (Bin: {binsize}, Kernel: {kernel_width})')
 else:
     all_sdf_dict = {}
@@ -244,6 +201,9 @@ else:
         all_psth = []
         all_trial_psth = []
         all_spikes = []
+        all_sdf_dict[region_key] = {}
+        all_psth_dict[region_key] = {}
+        area_mean_rate[region_key] = {}
         for event in events:
             window_range = np.array(epoch_window_map[event_map[event]]['window'])
             num_bins = int(1.0*(window_range.max() - window_range.min())/binsize)
@@ -268,125 +228,14 @@ else:
                     psth_list[:, 0] = neuron_psth[1:, 0]
                 psth_list[:, neuron_idx+1] = neuron_psth[1:, 1]
                 trial_psth_list.append(psth_trials)
-            all_psth.append(psth_list)
             if region_key not in event_mean_rate.keys():
                 event_mean_rate[region_key] = {}
             event_mean_rate[region_key][event] = psth_list[:,1:].mean(axis=0)
-            all_trial_psth.append(np.stack(trial_psth_list, axis=-1))
-        all_psth = np.vstack(all_psth)
-        all_trial_psth = np.vstack(all_trial_psth)
-        area_sdf, _ = gen_sdf(all_psth[:, 1:], w=kernel_width, bin_size=binsize, ftype='Gauss', multi_unit=True)
-        all_sdf_dict[region_key] = area_sdf.T
-        all_psth_dict[region_key] = all_trial_psth
-        area_mean_rate[region_key] = all_psth[:, 1:].mean(axis=0)
+            area_sdf, _ = gen_sdf(psth_list[:, 1:], w=kernel_width, bin_size=binsize, ftype='Gauss', multi_unit=True)
+            all_sdf_dict[region_key][event_map[event]] = area_sdf.T
+            all_psth_dict[region_key][event_map[event]] = np.stack(trial_psth_list)
     with open(all_sdf_filename, 'wb') as sdf_file:
+        print('Saving SDF Dictionary')
         pkl.dump(all_sdf_dict, sdf_file)
-    with open(area_mean_filename, 'wb') as area_mean_file:
-        pkl.dump((area_mean_rate, event_mean_rate), area_mean_file)
     with open(all_psth_filename, 'wb') as psth_file:
         pkl.dump(all_psth_dict, psth_file)
-area_rates = {'M1': {'horizontal': [], 'vertical': [], 'ipsilateral': [], 'contralateral': []},
-              'PMd':{'horizontal': [], 'vertical': [], 'ipsilateral': [], 'contralateral': []},
-              'PMv':{'horizontal': [], 'vertical': [], 'ipsilateral': [], 'contralateral': []}}
-event_rates = {'M1': {'Cue': {}, 'Grasp On': {}},
-              'PMd': {'Cue': {}, 'Grasp On': {}},
-              'PMv': {'Cue': {}, 'Grasp On': {}}}
-total_rates = {'M1': [], 'PMd': [], 'PMv': []}
-event_total_rates = {'M1': {'Cue': {}, 'Grasp On': {}},
-                    'PMd': {'Cue': {}, 'Grasp On': {}},
-                    'PMv': {'Cue': {}, 'Grasp On': {}}}
-nzero_mask = {}
-event_nzero_mask = {}
-for region_key in area_mean_rate.keys():
-    lat = lat_map[region_key[0]]
-    region, orient = region_key[1:].split('_')
-    area_mean = area_mean_rate[region_key]
-    area_rates[region][orient].append(area_mean)
-    area_rates[region][lat].append(area_mean)
-    for event in event_rates[region].keys():
-        event_mean = event_mean_rate[region_key][epoch_window_map[event]['event']]
-        event_rates[region][event][lat] = event_mean
-        event_total_rates[region][event][lat] = area_mean
-    total_rates[region].append(area_mean)
-for region in total_rates.keys():
-    total_rates[region] = np.vstack(total_rates[region]).sum(axis=0)
-    nzero_mask[region] = (total_rates[region]>0)
-    total_rates[region] = total_rates[region][nzero_mask[region]]
-    for event in event_rates[region].keys():
-        e_r = event_rates[region][event]
-        event_rates[region][event] = np.mean([e for e in e_r.values()], axis=0)
-        event_total_rates[region][event] = np.sum([i for i in event_total_rates[region][event].values()], axis=0)
-    event_total_rates[region] = np.sum(list(event_total_rates[region].values()), axis=0)
-    event_nzero_mask[region] = (event_total_rates[region]>0)
-    event_total_rates[region] = event_total_rates[region][event_nzero_mask[region]]
-for region in area_rates.keys():
-    print(region)
-    for cond in area_rates[region].keys():
-        rates = area_rates[region][cond]
-        area_rates[region][cond] = np.vstack(rates).sum(axis=0)[nzero_mask[region]]
-    a_r = area_rates[region]
-    for event in event_rates[region].keys():
-        event_rates[region][event] = event_rates[region][event][event_nzero_mask[region]]
-    e_r = event_rates[region]
-    orientation_score = (a_r['vertical'] - a_r['horizontal'])/total_rates[region]
-    event_score = (e_r['Grasp On'] - e_r['Cue']) / event_total_rates[region]
-    hemisphere_score = (a_r['contralateral'] - a_r['ipsilateral']) / total_rates[region]
-    upper_mosaic = [['histx', '.'],['scatter', 'histy']]
-    fig, axs = plt.subplot_mosaic(upper_mosaic, figsize=(6, 6), width_ratios=(4, 1.5), height_ratios=(1, 4),
-                                  layout='constrained')
-    ax = axs['scatter']
-    tr = total_rates[region]
-    norm = mpl.colors.LogNorm(vmin = np.nanmin(total_rates[region]), vmax = np.nanmax(total_rates[region]))
-    scatter_hist(ax=axs['scatter'], ax_histx=axs['histx'], ax_histy=axs['histy'], y=orientation_score,
-                 x=hemisphere_score, c=tr, norm='log')
-    plt.colorbar(cm.ScalarMappable(norm=norm), label='Total Rate', ax= axs['histy'])
-    plt.suptitle(f'Neuron Scores for {region}')
-    plt.gcf().text(1, 0.9, in_layout=False, ha='right', va='top',
-                                  s= f'x mean = {hemisphere_score.mean():.3f}, x std = {hemisphere_score.std():.3f}\ny mean = {event_score.mean():.3f}, y std = {event_score.std():.3f}')
-    ax.set_ylabel(f'Orientation Score (Vertical - Horizontal)')
-    # ax.set_ylabel(f'Event Score (Grasp - Cue)')
-    ax.set_xlabel(f'Hemisphere Score (Contra - Ipsi)')
-    ax.set_xlim([-1.03,1.03])
-    ax.set_ylim([-1.03,1.03])
-
-    plt.savefig(f'{summary_dir}/neuronSelection_merged{len(monkey_name_map.keys())}_bin{binsize}_k{kernel_width}_{region}.png',
-                bbox_inches='tight', dpi=200)
-
-    # plt.savefig(
-    #     f'{summary_dir}/neuronSelectionEvent_merged{len(monkey_name_map.keys())}_bin{binsize}_k{kernel_width}_{region}.png',
-    #     bbox_inches='tight', dpi=200)
-
-    f_cum, ax_cum = plt.subplots(figsize=(6,6))
-    # ax_cum = axs['cumulative']
-    res_hem = sp.stats.ecdf(np.abs(hemisphere_score))
-    res_ori = sp.stats.ecdf(np.abs(orientation_score))
-    # res_event = sp.stats.ecdf(np.abs(event_score))
-    q_hem = res_hem.cdf.quantiles
-    q_ori = res_ori.cdf.quantiles
-    # q_event = res_event.cdf.quantiles
-    area_hem = ((q_hem[1:]-q_hem[:-1])*np.arange(1,q_hem.shape[0])).sum()/q_hem.shape[0]
-    area_ori = ((q_ori[1:]-q_ori[:-1])*np.arange(1,q_ori.shape[0])).sum()/q_ori.shape[0]
-    # area_event = ((q_event[1:] - q_event[:-1]) * np.arange(1, q_event.shape[0])).sum() / q_event.shape[0]
-    res_hem.cdf.plot(ax_cum, label=f'abs Hemi, AUC: {area_hem:.3f}', c='b')
-    res_ori.cdf.plot(ax_cum, label=f'abs Orient, AUC: {area_ori:.3f}', c ='r')
-    # res_event.cdf.plot(ax_cum, label=f'abs Event, AUC: {area_event:.3f}', c='r')
-    # ax_cum.ecdf(np.abs(hemisphere_score), label='abs Hemi Index', c='b')
-    # res_ori.cdf.plot(ax_cum, label=f'abs Orient, AUC: {area_ori:.3f}', c='r')
-    # ax_cum.ecdf(np.abs(orientation_score), label='abs Orient Index', c ='r')
-    ax_cum.plot([0,1], [0,1],'k--')
-    ax_cum.set_ylabel('Cumulative Fraction')
-    ax_cum.set_xlabel('abs Hemi and Orient Index')
-    # ax_cum.set_xlabel('abs Hemi and Event Index')
-    ax_cum.set_title(f'{region} Selection Ratio')
-    ax_cum.set_xlim([0,1])
-    ax_cum.set_ylim([0,1])
-    ax_cum.legend()
-    plt.savefig(f'{summary_dir}/neuronSelectionCumulative_merged{len(monkey_name_map.keys())}_bin{binsize}_k{kernel_width}_{region}.png',
-                bbox_inches='tight', dpi=200)
-    # plt.savefig(
-    #     f'{summary_dir}/neuronSelectionCumulativeEvent_merged{len(monkey_name_map.keys())}_bin{binsize}_k{kernel_width}_{region}.png',
-    #     bbox_inches='tight', dpi=200)
-    score_filename = f'{summary_dir}/neuronSelection_scores_merged{len(monkey_name_map.keys())}_bin{binsize}_k{kernel_width}_{region}.p'
-    with open(score_filename, 'wb') as score_file:
-        pkl.dump({'hemi_score':hemisphere_score, 'orient_score':orientation_score, 'event_score':event_score,
-                  'nzero_mask':nzero_mask[region], 'event_nzero_mask':event_nzero_mask[region]}, score_file)

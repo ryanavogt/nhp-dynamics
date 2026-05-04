@@ -56,7 +56,7 @@ class Monkey:
         self.save_dir = f'{root_dir}/PCA_b{self.bin_size}_k{self.kernel_width}/Monkey{self.name}'
         return self.save_dir
 
-    def get_sdf(self, cort_sdf, cortex):
+    def get_sdf(self, cort_sdf, cortex, epoch='Merged'):
         """
         Split the sdf for the neurons of this monkey by cortex and by condition
         :param cort_sdf: Full sdf of this entire cortex (not split by monkey)
@@ -64,22 +64,24 @@ class Monkey:
         :param cortex: Cortex for the SDF and condition_map
         :return: Dictionary of SDF for this cortex, keys: conditions, values: SDF
         """
+        # n_conds = len(self.condition_map[cortex])
+        # t_interval = int(cort_sdf.shape[1]/n_conds)
         self.check_cortex(cortex)
         cortex_sdf = {}
         for (cond, cond_idcs) in self.condition_map[cortex].items():
             cortex_sdf[cond] = cort_sdf[cond_idcs[0]:cond_idcs[1]][self.monkey_indices[cortex]]
-        self.cortices[cortex]['sdf'] = cortex_sdf
+        self.cortices[cortex]['sdf'] = {epoch: cortex_sdf}
         return cortex_sdf
 
-    def get_trial_psth(self, cort_psth, cortex):
+    def get_trial_psth(self, cort_psth, cortex, epoch='Merged'):
         self.check_cortex(cortex)
         cortex_psth = {}
         for (cond, cond_idcs) in self.condition_map[cortex].items():
             cortex_psth[cond] = cort_psth[cond_idcs[0]:cond_idcs[1]][self.monkey_indices[cortex]]
-        self.cortices[cortex]['psth'] = cortex_psth
-        return self.cortices[cortex]['psth']
+        self.cortices[cortex]['psth'] = {epoch: cortex_psth}
+        return cortex_psth
 
-    def get_svd(self, cortex):
+    def get_svd(self, cortex, epoch='Merged'):
         """
         Split principal vectors (V) by condition for this cortex
         :param condition_map: Dictionary of indices for conditions in this cortex
@@ -87,7 +89,7 @@ class Monkey:
         :return: Dictionary of principal vectors (V) for this cortex
         """
         self.check_cortex(cortex)
-        sdf = self.cortices[cortex]['sdf']
+        sdf = self.cortices[cortex]['sdf'][epoch]
         cortex_svd = {}
         pca_sdf = []
         pca_conds = []
@@ -101,13 +103,17 @@ class Monkey:
         V = Vh.T
         cortex_svd['Full'] = {'U': U, 'S': S, 'V': V, 'sdf': cort_dict_sdf['centered'], 'cov': cort_cov}
         for (cond, cond_idcs) in self.condition_map[cortex].items():
-            cond_sdf = self.cortices[cortex]['sdf'][cond]
+            cond_sdf = sdf[cond]
             cond_cov = torch.cov(cond_sdf)
             dict_sdf = center_sdf(cond_sdf)
             U, S, Vh = torch.linalg.svd(dict_sdf['square'], full_matrices=False)
             V = Vh.T
             cortex_svd[cond] = {'U':U, 'S':S, 'V':V, 'sdf': dict_sdf['centered'], 'cov':cond_cov}
-        self.cortices[cortex]['SVD'] = cortex_svd
+        if 'SVD' not in self.cortices[cortex].keys():
+            self.cortices[cortex]['SVD'] = {epoch: cortex_svd}
+        else:
+            self.cortices[cortex]['SVD'][epoch] = cortex_svd
+
         return cortex_svd
 
     def get_dmds(self, cortex, k_folds=5, verbose=False, permute = False, **dsa_kwargs):

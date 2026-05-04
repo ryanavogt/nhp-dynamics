@@ -125,6 +125,7 @@ for cort_idx, cortex in enumerate(cortex_list):
     V_plot, V_indices = (merged_V[:,:3]**2).sqrt().sum(dim=1).sort(descending=True, dim=0)
     n_neurons = merged_monkey.cortices[cortex]['neurons']
     title_string = f'{cortex} V weights, {n_neurons} neurons'
+    cont_total = V_plot.sum()
     for m_name, monkey in monkeys.items():
         if m_name == 'All':
             continue
@@ -132,7 +133,10 @@ for cort_idx, cortex in enumerate(cortex_list):
         monkey_neurons = monkey.cortices[cortex]['neurons']
         title_string += f', {m_name}: {monkey_neurons}'
         monkey_x = np.where((V_indices<=m_indices[-1])*(V_indices>=m_indices[0]))
-        cort_ax.bar(x=monkey_x[0], width=.85, height=V_plot[monkey_x[0]], label=m_name, color=color_map[m_name])
+        monkey_V = V_plot[monkey_x].sum()
+        cort_ax.bar(x=monkey_x[0], width=.85, height=V_plot[monkey_x[0]],
+                    label=f'{m_name}, T:{monkey_V/cont_total:.2f}, Avg:{(monkey_V/cont_total)/monkey_x[0].shape[0]*100:.2f}',
+                    color=color_map[m_name])
     cort_ax.set_xlim([-1, n_neurons])
     cort_ax.legend(title='Monkey')
     cort_ax.set_title(title_string)

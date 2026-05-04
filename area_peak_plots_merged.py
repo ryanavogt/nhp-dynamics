@@ -9,6 +9,8 @@ from sig_proc import *
 import pandas as pd
 import matplotlib as mpl
 from plot_utils import scale_lightness
+from scipy.cluster.hierarchy import ward, dendrogram, fcluster
+from scipy.spatial.distance import pdist
 
 from sig_proc import *
 
@@ -188,24 +190,38 @@ Generate plots after loading data
 """
 plot_dict = {}
 max_dict = {}
+clustering_dict = {}
 for area_label in area_summary_dict.keys():
     area_key, orientation = area_label.split('_')
     lat, region = area_key[0], area_key[1:]
     peak_order = peak_order_dict[area_label]
-    if orientation not in plot_dict.keys():
-        plot_dict[orientation] = {}
-        max_dict[orientation] = {}
-    if region not in plot_dict[orientation].keys():
-        plot_dict[orientation][region] = {}
-        max_dict[orientation][region] = {}
-    for event in events:
-        if event not in plot_dict[orientation][region]:
-            plot_dict[orientation][region][event] = {}
-            max_dict[orientation][region][event] = {}
+    if region not in plot_dict.keys():
+        plot_dict[region]= {}
+        max_dict[region] = {}
+        clustering_dict[region]={}
+    if orientation not in plot_dict[region].keys():
+        plot_dict[region][orientation] = {}
+        max_dict[region][orientation] = {}
+        clustering_dict[region][orientation] = {}
+
+    dend_fig, dend_axs = plt.subplots(nrows=2, ncols=1, figsize=(12,6))
+    for event, dend_ax in zip(events, dend_axs):
+        if event not in plot_dict[region][orientation]:
+            plot_dict[region][orientation][event] = {}
+            max_dict[region][orientation][event] = {}
         neuron_count = area_summary_dict[area_label][event]['neurons']
         area_sdf = all_sdf_dict[area_label][event]
-        plot_dict[orientation][region][event][lat] = area_sdf
-        max_dict[orientation][region][event][lat] = {'max':area_sdf.max(axis=0), 'order': peak_order[event]}
+        norm_sdf = area_sdf.T/(np.expand_dims(area_sdf.max(axis=0), 1).repeat(area_sdf.shape[0], 1)+.000001)
+        y = pdist(norm_sdf)
+        Z = ward(y)
+        dendrogram(Z, ax=dend_ax)
+        dend_ax.set_title(f'{event}')
+        plot_dict[region][orientation][event][lat] = area_sdf
+        max_dict[region][orientation][event][lat] = {'max':area_sdf.max(axis=0), 'order': peak_order[event]}
+        clustering_dict[region][orientation][event][lat] = {'dist':y, 'Z':Z}
+    dend_fig.tight_layout()
+    dend_fig.savefig(f'{summary_dir}/ClusteringDendrogram_{area_label}.png', dpi=200)
+    plt.close()
 
 skip_plots = True # To save time
 neuron_plot_dir = f'{summary_dir}/Neuron Plots_merged{len(monkey_name_map.keys())}_bin{binsize}_kernel{kernel_width}'
@@ -213,17 +229,17 @@ index_sides = ['ipsi', 'contra']
 for index_side in index_sides:
     if not os.path.exists(neuron_plot_dir):
         os.mkdir(neuron_plot_dir)
-    for orientation in plot_dict.keys():
+    for region in plot_dict.keys():
         if skip_plots:
             break
-        for region in plot_dict[orientation].keys():
+        for orientation in plot_dict[region].keys():
             neuron_count = area_summary_dict[f'c{region}_{orientation}']['trialGraspOn']['neurons'].astype(int)
-            for event in plot_dict[orientation][region].keys():
-                peak_order = max_dict[orientation][region][event][index_side[0]]['order']
-                max_rate = max_dict[orientation][region][event][index_side[0]]['max']
+            for event in plot_dict[region][orientation].keys():
+                peak_order = max_dict[region][orientation][event][index_side[0]]['order']
+                max_rate = max_dict[region][orientation][event][index_side[0]]['max']
                 fig, axs = plt.subplots(1, 2, figsize=(8, 8))
                 for idx, lat in enumerate(['c', 'i']):
-                    a = plot_dict[orientation][region][event][lat].T
+                    a = plot_dict[region][orientation][event][lat].T
                     scaled_sdf = np.divide(a, max_rate, where= max_rate>0)
                     y, x = np.mgrid[1:neuron_count + 2:1,
                            window_range[0]/1000:window_range[1]/1000 + 2 * binsize/1000:binsize/1000]
