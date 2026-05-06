@@ -650,7 +650,7 @@ n_pcs = 2
 for vel in [True, False]:
     for event in epoch_window_map.keys():
         for m_name, monkey in monkeys.items():
-            pc_fig, pc_axs = plt.subplots(nrows=n_pcs, ncols=4, figsize=(12, 3 * n_pcs))
+            pc_fig, pc_axs = plt.subplots(nrows=n_pcs, ncols=4, figsize=(8, 3 * n_pcs))
             for cort_idx, cortex in enumerate(cortex_map.keys()):
                 monkey_pcs = monkey.cortices[cortex]['SVD'][event]['Full']['V']
                 # cort_axs = pc_axs[cort_idx]

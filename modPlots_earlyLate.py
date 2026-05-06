@@ -53,7 +53,7 @@ events = ['trialRewardDrop', 'trialGraspOn']
 binsize = 5
 kernel_width = 25
 load_override_preprocess = False
-load_override = True
+load_override = False
 
 # Extract All Sessions from their Sorting Notes
 file_list = [f for f in glob.glob(f'{sorting_dir}/SortingNotes_*.xlsx')]
@@ -193,10 +193,15 @@ Generate plots after loading data
 plot_dict = {}
 max_dict = {}
 clustering_dict = {}
+sns.set_style("ticks")
+# sns.set_style("whitegrid")
+plots = {}
+for region in ['M1', 'PMd', 'PMv']:
+    plots[region] = {}
 for area_label in area_summary_dict.keys():
     area_key, orientation = area_label.split('_')
     lat, region = area_key[0], area_key[1:]
-    # peak_order = peak_order_dict[area_label]
+    peak_order = peak_order_dict[area_label]
     if region not in plot_dict.keys():
         plot_dict[region]= {}
         max_dict[region] = {}
@@ -205,25 +210,53 @@ for area_label in area_summary_dict.keys():
         plot_dict[region][orientation] = {}
         max_dict[region][orientation] = {}
         clustering_dict[region][orientation] = {}
+        plots[region][orientation] = plt.subplots(nrows=2, ncols=2, figsize=(8, 6))
 
-    # dend_fig, dend_axs = plt.subplots(nrows=2, ncols=1, figsize=(12,6))
-    # for event, dend_ax in zip(events, dend_axs):
-    #     if event not in plot_dict[region][orientation]:
-    #         plot_dict[region][orientation][event] = {}
-    #         max_dict[region][orientation][event] = {}
-    #     neuron_count = area_summary_dict[area_label][event]['neurons']
-    #     area_sdf = all_sdf_dict[area_label][event]
-    #     norm_sdf = area_sdf.T/(np.expand_dims(area_sdf.max(axis=0), 1).repeat(area_sdf.shape[0], 1)+.000001)
-    #     y = pdist(norm_sdf)
-    #     Z = ward(y)
-    #     dendrogram(Z, ax=dend_ax)
-    #     dend_ax.set_title(f'{event}')
-    #     plot_dict[region][orientation][event][lat] = area_sdf
-    #     max_dict[region][orientation][event][lat] = {'max':area_sdf.max(axis=0), 'order': peak_order[event]}
-    #     clustering_dict[region][orientation][event][lat] = {'dist':y, 'Z':Z}
-    # dend_fig.tight_layout()
-    # dend_fig.savefig(f'{summary_dir}/ClusteringDendrogram_{area_label}.png', dpi=200)
-    # plt.close()
+    # dend_fig, dend_axs = plt.subplots(nrows=2, ncols=1, figsize=(4,6))
+    dend_fig, dend_axs = plots[region][orientation]
+    if lat == 'c':
+        lat_idx=0
+        y_label=True
+    else:
+        lat_idx=1
+        y_label=False
+    for event, dend_ax in zip(events, dend_axs):
+        if event not in plot_dict[region][orientation]:
+            plot_dict[region][orientation][event] = {}
+            max_dict[region][orientation][event] = {}
+            clustering_dict[region][orientation][event] = {}
+        neuron_count = area_summary_dict[area_label][event]['neurons']
+        area_sdf = all_sdf_dict[area_label][event]
+        norm_sdf = area_sdf.T/(np.expand_dims(area_sdf.max(axis=0), 1).repeat(area_sdf.shape[0], 1)+.000001)
+        y = pdist(norm_sdf)
+        Z = ward(y)
+        if event == 'trialGraspOn':
+            dend_ax = dend_axs[0][lat_idx]
+            clust_ax = dend_axs[1][lat_idx]
+            dists = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 20, 25, 30]
+            clusters = []
+            for dist in dists:
+                clusters.append(len(np.unique(fcluster(Z, dist, criterion='distance'))))
+            clust_ax.plot(dists, clusters)
+            clust_ax.set_yscale('log')
+            clust_ax.set_yticks([1, 5, 10, 20, 50, 100, 200])
+            clust_ax.set_xlabel('Distance')
+            dendrogram(Z, ax=dend_ax)
+            dend_ax.set_title(f'{lat_map[lat].capitalize()}')
+            if y_label:
+                dend_ax.set_ylabel('Distance')
+                clust_ax.set_ylabel('No. of Clusters')
+        plot_dict[region][orientation][event][lat] = area_sdf
+        max_dict[region][orientation][event][lat] = {'max':area_sdf.max(axis=0), 'order': peak_order[event]}
+        clustering_dict[region][orientation][event][lat] = {'dist':y, 'Z':Z}
+        # dend_ax.set_xticks(dists)
+for region in plots.keys():
+    for orientation in plots[region].keys():
+        dend_fig, _ = plots[region][orientation]
+        # dend_fig.tight_layout()
+        dend_fig.suptitle(f'Clustering for {region}, Grasp Onset\n{orientation.capitalize()} Orientation')
+        dend_fig.savefig(f'{summary_dir}/NumberOfClusters_{region}_{orientation}.png', dpi=200)
+        plt.close()
 
 
 """

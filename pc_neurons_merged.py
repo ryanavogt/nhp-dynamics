@@ -4,6 +4,7 @@ import os                           #Directory Creation and Verification (built-
 # The following packages need to be installed in your virtual environment (using conda or pip)
 import matplotlib.pyplot as plt     #Generating plots
 import matplotlib as mpl
+import numpy as np
 from matplotlib.lines import Line2D
 import torch
 import scipy.stats as stats
@@ -118,12 +119,14 @@ with open(joint_indices_filename, 'wb') as joint_indices_file:
 monkeys = pkl.load(open(monkey_dict_filename, 'rb'))
 color_map = {'R': 'tab:red', 'G': 'tab:green', 'Y': 'tab:orange', 'B': 'tab:blue'}
 merged_monkey = monkeys['All']
-joint_fig, joint_axes = plt.subplots(nrows=1, ncols=3, figsize=(18, 5))
+joint_fig, joint_axes = plt.subplots(nrows=2, ncols=3, figsize=(12, 6), gridspec_kw={'height_ratios':[1.5,1]})
 for cort_idx, cortex in enumerate(cortex_list):
-    cort_ax = joint_axes[cort_idx]
+    cort_ax = joint_axes[0][cort_idx]
+    cdf_ax = joint_axes[1][cort_idx]
     merged_V = merged_monkey.cortices[cortex]['SVD']['Full']['V']
     V_plot, V_indices = (merged_V[:,:3]**2).sqrt().sum(dim=1).sort(descending=True, dim=0)
     n_neurons = merged_monkey.cortices[cortex]['neurons']
+    neuron_list = np.arange(n_neurons)
     title_string = f'{cortex} V weights, {n_neurons} neurons'
     cont_total = V_plot.sum()
     for m_name, monkey in monkeys.items():
@@ -131,12 +134,22 @@ for cort_idx, cortex in enumerate(cortex_list):
             continue
         m_indices = monkey.monkey_indices[cortex]
         monkey_neurons = monkey.cortices[cortex]['neurons']
-        title_string += f', {m_name}: {monkey_neurons}'
+        # title_string += f', {m_name}: {monkey_neurons}'
         monkey_x = np.where((V_indices<=m_indices[-1])*(V_indices>=m_indices[0]))
+        mod_ecdf = stats.ecdf(neuron_list[monkey_x])
+        ks_stat = stats.ks_1samp(neuron_list[monkey_x] / n_neurons, stats.uniform.cdf)
+        p_val = ks_stat[1]
+        mod_ecdf.cdf.plot(cdf_ax, label=f'{m_name}, p:{p_val:.2f}', c=color_map[m_name])
         monkey_V = V_plot[monkey_x].sum()
         cort_ax.bar(x=monkey_x[0], width=.85, height=V_plot[monkey_x[0]],
-                    label=f'{m_name}, T:{monkey_V/cont_total:.2f}, Avg:{(monkey_V/cont_total)/monkey_x[0].shape[0]*100:.2f}',
+                    label=f'{m_name}, n:{monkey_neurons}, T:{monkey_V/cont_total:.2f}, Avg:{(monkey_V/cont_total)/monkey_x[0].shape[0]*100:.2f}',
                     color=color_map[m_name])
+    cdf_ax.plot([0, n_neurons], [0, 1], 'k--')
+    cdf_ax.set_ylabel('Cumulative Fraction')
+    cdf_ax.set_xlabel('Neuron Index')
+    cdf_ax.set_xlim([0, n_neurons])
+    cdf_ax.set_ylim([0, 1])
+    cdf_ax.legend(prop={'size':6})
     cort_ax.set_xlim([-1, n_neurons])
     cort_ax.legend(title='Monkey')
     cort_ax.set_title(title_string)
@@ -151,10 +164,11 @@ mod_color_map = {'ipsi':'tab:purple', 'contra':'tab:red', 'both:equal':'tab:gree
 merged_monkey = monkeys['All']
 for orientation in ['horizontal', 'vertical']:
     for epoch in ['Cue', 'Grasp On']:
-        joint_fig, joint_axes = plt.subplots(nrows=1, ncols=3, figsize=(18, 5))
+        joint_fig, joint_axes = plt.subplots(nrows=2, ncols=3, figsize=(12, 6), gridspec_kw={'height_ratios':[1.5,1]})
         cum_fig, cum_axes = plt.subplots(nrows=1, ncols=3, figsize=(18, 5))
         for cort_idx, cortex in enumerate(cortex_list):
-            cort_ax = joint_axes[cort_idx]
+            cort_ax = joint_axes[0][cort_idx]
+            cdf_ax = joint_axes[1][cort_idx]
             cum_ax = cum_axes[cort_idx]
             merged_V = merged_monkey.cortices[cortex]['SVD']['Full']['V']
             V_plot, V_indices = (merged_V[:,:3]**2).sqrt().sum(dim=1).sort(descending=True, dim=0)
@@ -162,7 +176,7 @@ for orientation in ['horizontal', 'vertical']:
             neuron_list = np.arange(n_neurons)
             V_cum = (V_plot**2).cumsum(dim=0)
             cum_ax.bar(x=neuron_list, width=0.85, height=V_cum/V_cum[-1])
-            cum_ax.set_xlim([0, n_neurons])
+            cum_ax.set_xlim([0, 1])
             cum_ax.set_title(f'{cortex}'), cum_ax.set_ylabel(f'3-PC Contribution Cumulative Sum'), cum_ax.set_xlabel(f'Index')
             title_string = f'{cortex} V weights, {n_neurons} neurons'
             for mod_type, color in mod_color_map.items():
@@ -175,20 +189,28 @@ for orientation in ['horizontal', 'vertical']:
                     if V_index in list(mod_indices):
                         mod_x[idx] = True
                 # title_string += f', {mod_type}: {len(mod_indices)}'
+                mod_ecdf = stats.ecdf(np.arange(n_neurons)[mod_x])
                 ks_stat = stats.ks_1samp(neuron_list[mod_x]/n_neurons, stats.uniform.cdf)
                 p_val = ks_stat[1]
+                mod_ecdf.cdf.plot(cdf_ax, label=f'{mod_type}, p:{p_val:.2f}', c=color)
                 cort_ax.bar(x=neuron_list[mod_x], width=.85, height=V_plot[mod_x],
-                            label=f'{mod_type}, n:{np.array(mod_x).sum()}, p:{p_val:.2f}', color=color)
+                            label=f'{mod_type}, n:{np.array(mod_x).sum()}', color=color)
+            cdf_ax.plot([0,n_neurons], [0,1],'k--')
+            cdf_ax.set_ylabel('Cumulative Fraction')
+            cdf_ax.set_xlabel('Neuron Index')
+            cdf_ax.set_xlim([0, n_neurons])
+            cdf_ax.set_ylim([0,1])
+            cdf_ax.legend(prop={'size':6})
             cort_ax.set_xlim([-1, n_neurons])
-            cort_ax.legend(title='Monkey')
+            cort_ax.legend(title='Mod Type')
             cort_ax.set_title(title_string)
             cort_ax.set_ylabel(f'Summed Neuron Value')
         joint_fig.suptitle(f'Abs Neuron Loading Value Sum for First 3 PCs by Mod Type in {epoch}')
         joint_fig.tight_layout()
-        joint_fig.savefig(f'{pca_dir}/neuronModTypeCont{epoch}_{orientation}.png', bbox_inches='tight', dpi=600)
+        joint_fig.savefig(f'{pca_dir}/neuronModTypeCont{epoch}_{orientation}.png', bbox_inches='tight', dpi=300)
         cum_fig.suptitle(f'Cumulative PC Sum for First 3 PCs in {epoch}, {orientation.capitalize()}')
         cum_fig.tight_layout()
-        cum_fig.savefig(f'{pca_dir}/neuronModTypeCumulative{epoch}_{orientation}.png', bbox_inches='tight', dpi=600)
+        cum_fig.savefig(f'{pca_dir}/neuronModTypeCumulative{epoch}_{orientation}.png', bbox_inches='tight', dpi=300)
 
 corr_fig = plt.figure(layout='constrained', figsize=(12,8))
 subfigs = corr_fig.subfigures(1,3, wspace=0.05)

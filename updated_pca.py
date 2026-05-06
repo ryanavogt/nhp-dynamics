@@ -366,7 +366,7 @@ for cort_idx, cortex in enumerate(cortex_map.keys()):
         else:
             m_neurons = max(cort)
         for idx, (cond, c_ind) in enumerate(condition_map[cortex].items()):
-            cond_psth = monkey_obj.cortices[cortex]['psth'][cond]
+            cond_psth = monkey_obj.cortices[cortex]['psth']['Merged'][cond]
             split_psth = torch.tensor_split(cond_psth, 2, dim=1)
             split_sdf = []
             split_V = []
@@ -461,9 +461,9 @@ for cort_idx, cortex in enumerate(cortex_map.keys()):
             ax2a = fig.add_subplot(2, 2, 4)
             for cond in cond_list:
                 angles = {}
-                V_cond = monkey_obj.cortices[cortex]['SVD'][cond]['V']
+                V_cond = monkey_obj.cortices[cortex]['SVD']['Merged'][cond]['V']
                 for o_cond in cond_list:
-                    V_ocond = monkey_obj.cortices[cortex]['SVD'][o_cond]['V']
+                    V_ocond = monkey_obj.cortices[cortex]['SVD']['Merged'][o_cond]['V']
                     if o_cond == cond:
                         Vs = split_Vs[cond]
                         G = Vs[0][:,:n_dims].T@Vs[1][:,:n_dims]
@@ -537,16 +537,16 @@ vel_fig.tight_layout()
 vel_fig.savefig(f'{pca_dir}/PCVelocity.png', dpi=300, bbox_inches='tight')
 
 base_monkey = monkeys['All']
-pc_fig, pc_axs = plt.subplots(nrows=1, ncols=3, figsize=(12, 5))
+pc_fig, pc_axs = plt.subplots(nrows=1, ncols=3, figsize=(10, 3))
 color_map = {'R': 'tab:red', 'G': 'tab:green', 'Y': 'tab:orange', 'B': 'tab:blue'}
 for c_idx, cortex in enumerate(cortex_map.keys()):
     reg_ax = pc_axs[c_idx]
     handles = []
     labels = []
-    base_pcs = base_monkey.cortices[cortex]['SVD']['Full']['V']
+    base_pcs = base_monkey.cortices[cortex]['SVD']['Merged']['Full']['V']
     new_handle = True
-    for c_idx, condition in enumerate(base_monkey.condition_map[cortex].keys()):
-        base_sdf = base_monkey.cortices[cortex]['SVD'][condition]['sdf']
+    for cond_idx, condition in enumerate(base_monkey.condition_map[cortex].keys()):
+        base_sdf = base_monkey.cortices[cortex]['SVD']['Merged'][condition]['sdf']
         base_proj = base_sdf.T @ base_pcs
         x, y, z = base_proj[:, :3].T
         if new_handle:
@@ -559,15 +559,18 @@ for c_idx, cortex in enumerate(cortex_map.keys()):
     # reg_ax.plot(x,y, label='All', color='black')
     reg_ax.set_title(cortex)
     reg_ax.set_xlabel('PC 1')
-    reg_ax.set_ylabel('PC 2')
+    if c_idx == 0:
+        reg_ax.set_ylabel('PC 2')
     for m_name, monkey in monkeys.items():
         if m_name == 'All':
+            continue
+        if monkey.cortices[cortex]['neurons'] <= 5:
             continue
         # monkey_sdf = torch.zeros_like(base_sdf)
         new_handle = True
         for c_idx, condition in enumerate(base_monkey.condition_map[cortex].keys()):
             monkey_sdf = torch.zeros_like(base_sdf)
-            monkey_sdf[monkey.monkey_indices[cortex]] = monkey.cortices[cortex]['SVD'][condition]['sdf']
+            monkey_sdf[monkey.monkey_indices[cortex]] = monkey.cortices[cortex]['SVD']['Merged'][condition]['sdf']
             monkey_pc_norm = base_pcs[monkey.monkey_indices[cortex]].norm(dim=0)
             monkey_proj = (monkey_sdf.T @ base_pcs) / monkey_pc_norm**2
             x, y, z = monkey_proj[:, :3].T
@@ -578,8 +581,12 @@ for c_idx, cortex in enumerate(cortex_map.keys()):
                 new_handle = False
             else:
                 reg_ax.plot(x, y, color= color_map[m_name], alpha = 0.5)
-    reg_ax.legend(title='Monkey', handles=handles, labels=labels)
-pc_fig.suptitle('Monkey Trajectories in Joint Monkey PC Space')
+    # reg_ax.legend(title='Monkey', handles=handles, labels=labels)
+    # if cortex == 'PMv':
+    #     handles, labels = reg_ax.get_legend_handles_labels()
+# pc_fig.legend(title='Monkey', handles=handles, labels=labels, loc='upper center', bbox_to_anchor=(0.5, 0), ncols=5)
+# pc_fig.tight_layout()
+# pc_fig.suptitle('Monkey Trajectories in Joint Monkey PC Space')
 pc_fig.savefig(f'{pca_dir}/Joint_PCTrajectories.png', dpi=300, bbox_inches='tight')
 
 
@@ -635,11 +642,11 @@ for vel in [True, False]:
     for m_name, monkey in monkeys.items():
         pc_fig, pc_axs = plt.subplots(nrows=n_pcs, ncols=4, figsize=(12, 3*n_pcs))
         for cort_idx, cortex in enumerate(cortex_map.keys()):
-            monkey_pcs = monkey.cortices[cortex]['SVD']['Full']['V']
+            monkey_pcs = monkey.cortices[cortex]['SVD']['Merged']['Full']['V']
             # cort_axs = pc_axs[cort_idx]
             cort_axs = pc_axs
             for cond_idx, condition in enumerate(monkey.condition_map[cortex].keys()):
-                cond_sdf = monkey.cortices[cortex]['SVD'][condition]['sdf']
+                cond_sdf = monkey.cortices[cortex]['SVD']['Merged'][condition]['sdf']
                 cond_proj = cond_sdf.T@monkey_pcs
                 # cond_axs = cort_axs[cond_idx]
                 for pc in range(n_pcs):
