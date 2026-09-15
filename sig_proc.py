@@ -91,7 +91,7 @@ def trial_psth(spiketimes, trial_idcs, binsize, window, neurons = 1, default_tri
         psth_list = [np.zeros_like(times)[1:]]*default_trials
     return psth_list
 
-def gen_sdf(psth, ftype, w, bin_size = 1, varargin = None, multi_unit = True):
+def gen_sdf(psth, ftype, w, bin_size = 1, varargin = None, n_neurons=None, multi_unit = True):
     """
     Generate Spike Density Function by convolving the spike time histogram with a convolution function
     :param psth: Peristimulus Time Histogram (from psth function)
@@ -108,11 +108,11 @@ def gen_sdf(psth, ftype, w, bin_size = 1, varargin = None, multi_unit = True):
     }
     if multi_unit:
         sdf = psth
-        sdf = torch.Tensor(sdf.T).unsqueeze(1)
+        sdf = torch.Tensor(sdf).unsqueeze(1)
     else:
         sdf = psth[:, -1]
         sdf = torch.Tensor(sdf).unsqueeze(-1).unsqueeze(-1)
-    sdf, kernel = f_map[ftype](sdf.transpose(0, 0), w, bin_size)
+    sdf, kernel = f_map[ftype](sdf.transpose(0, -1), w, bin_size)
     return sdf, kernel
 
 def gauss(sdf, w, bin_size=1):

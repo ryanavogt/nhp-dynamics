@@ -76,7 +76,7 @@ for file in file_list_1+file_list_2:
     Notes                   Notes                                   - str
     Connector               Array Connector Number                  - int
     Area                    Region of the brain                     - str (M1, PMd(L or R), PMv(L or R))
-    Hemis                   Hemisphere of brain (relative to ???)   - str (contra or ipsi)
+    Hemis                   Hemisphere of brain                     - str (contra or ipsi)
     """
     sorting_file = f'{sorting_dir}/SortingNotes_{year}{month}{day}_{name_label}.xlsx'
     df = pd.read_excel(sorting_file)

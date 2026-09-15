@@ -25,7 +25,7 @@ def region_pca(region_map, pop_sdf, region_name):
             pca_sdf.append(pop_sdf[pca_ind[0]:pca_ind[1]])
     pca_sdf = torch.vstack(pca_sdf)
     cov = torch.cov(pca_sdf)
-    sdf_square = center_sdf(pca_sdf)['square']
+    sdf_square = center_sdf(pca_sdf)['centered']
     U, S, V = torch.linalg.svd(sdf_square, full_matrices=False)
 
     return U, S, V.T, cov

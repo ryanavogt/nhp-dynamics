@@ -2,6 +2,9 @@ from matplotlib import pyplot as plt
 import seaborn as sns
 import numpy as np
 import colorsys
+import math
+from sig_proc import gen_psth, gen_sdf
+import matplotlib as mpl
 
 sns.set_theme()
 sns.set_style(style='white')
@@ -78,3 +81,176 @@ def scale_lightness(rgb, scale_l):
     h, l, s = colorsys.rgb_to_hls(*rgb)
     # manipulate h, l, s values and return as rgb
     return colorsys.hls_to_rgb(h, min(1, l * scale_l), s = s)
+
+def add_headers(fig, *, row_headers=None, col_headers=None, row_pad=1, col_pad=5,
+                rotate_row_headers=True, **text_kwargs):
+    axes = fig.get_axes()
+    for ax in axes:
+        sbs = ax.get_subplotspec()
+        # Putting headers on cols
+        if (col_headers is not None) and sbs.is_first_row():
+            ax.annotate(col_headers[sbs.colspan.start], xy=(0.5, 1), xytext=(0, col_pad), xycoords="axes fraction",
+                        textcoords="offset points", ha="center", va="baseline", **text_kwargs,)
+        # Putti          ng headers on rows
+        if (row_headers is not None) and sbs.is_first_col():
+            ax.annotate(row_headers[sbs.rowspan.start], xy=(0, 0.5), xytext=(-ax.yaxis.labelpad - row_pad, 0),
+                        xycoords=ax.yaxis.label, textcoords="offset points", ha="right", va="center",
+                        rotation=rotate_row_headers * 90, **text_kwargs,)
+
+def raster_plot(neuron_list, region_spikes, event_list, epoch_window_map, conditions=None, n_cols=4, indices=None,
+                sdf = False, window = [0,820], binsize=5, kernel_width=25,
+                condition_colors={'cont-hori':'orange','cont-vert': 'red','ipsi-hori':'blue','ipsi-vert':'green'},
+                event_means= None, baseline_means = None):
+    total_neurons = np.array(neuron_list).shape[0]
+    n_rows = math.ceil(total_neurons/n_cols)
+    fig, axs = plt.subplots(nrows=math.ceil(total_neurons/n_cols),ncols=n_cols, figsize=(4*n_cols, 3.5*n_rows),
+                            constrained_layout=True)
+    epoch_times = [epoch_window_map[event]['time'] for event in epoch_window_map.keys()]
+    for idx, neuron in enumerate(neuron_list):
+        idx_string = ''
+        f_weight = 'normal'
+        if event_means is not None:
+            sdf_mean = event_means[idx]
+        if baseline_means is not None:
+            base_mean = baseline_means[idx]
+        if n_cols < total_neurons:
+            ax = axs[idx // n_cols][idx % n_cols]
+        else:
+            ax = axs[idx]
+        spikes = region_spikes[neuron]
+        if conditions is not None:
+            no_trials = len(conditions[idx])
+        else:
+            no_trials = spikes[:,1].max()
+        neuron_spikes = [[]] * no_trials
+        neuron_trials = [[]] * no_trials
+        ordered_spikes = []
+        if idx%50 == 0:
+            print(f'Neuron {neuron}')
+        if indices is not None:  
+            neuron_idx = np.where(indices == neuron)[1]
+            idx_string += f', ch:{neuron_idx[0]+1}, cv:{neuron_idx[1]+1}, ih:{neuron_idx[2]+1}, iv:{neuron_idx[3]+1}'
+            sig_neuron = neuron_idx < 10
+            if sig_neuron.sum()>0:
+                f_weight = 'bold'
+                ax.patch.set_edgecolor('black')
+                ax.patch.set_linewidth(3)
+        for event in event_list.keys():
+            event_window = epoch_window_map[event]['window']
+            event_times = np.array(event_list[event][neuron])
+            e_starts = event_times + event_window[0]
+            e_ends = event_times + event_window[1]
+            e_times = [0] * no_trials
+            for trial in np.arange(1, spikes[:, 1].max()+1):
+                if trial == len(event_times):
+                    break
+
+                event_start = e_starts[trial]
+                event_end = e_ends[trial]
+                # e_time = e_times[trial] + event_start
+                e_time = event_start
+                trial_spikes = spikes[spikes[:,1]==trial, 0]
+                trials = spikes[spikes[:,1]==trial, 1]
+                event_mask = (trial_spikes>event_start)*(trial_spikes<event_end)
+                # neuron_spikes[trial] = neuron_spikes[trial]+list(spike_list[event_mask].astype(np.int16)-event_start+
+                #                                                  epoch_window_map[event]['time' ]+epoch_window_map[event]['window'][0])
+                neuron_spikes[trial-1]=neuron_spikes[trial-1]+list(trial_spikes[event_mask].astype(np.int16)-event_start
+                                                                   + epoch_window_map[event]['time' ]
+                                                                   + epoch_window_map[event]['window'][0])
+                neuron_trials[trial-1]=neuron_trials[trial-1] + list(trials[event_mask])
+                e_times[trial-1] += (event_end-event_start)
+        for trial, trial_spike_list in enumerate(neuron_spikes):
+            trial_spikes = np.array(trial_spike_list)
+            neuron_spikes[trial] = trial_spikes
+        neuron_trials_flat = np.concatenate(neuron_trials)
+        neuron_spikes_flat = np.concatenate(neuron_spikes)
+        ax.set_title(f'Neuron {neuron}{idx_string}',fontweight=f_weight)
+        ax.set_ylabel(f'Trial')
+        ax.set_xlabel(f'Time (ms)')
+        max_time = epoch_window_map['Grasp On']['time'] + epoch_window_map['Grasp On']['window'][1]
+        ax.set_xlim([0, max_time])
+        ax.set_ylim([0,no_trials])
+        if conditions is not None:
+            cond_order = np.arange(no_trials)
+            cond_masks = {}
+            cond_idx = 0
+            for cond_i, condition in enumerate(condition_colors.keys()):
+                cond_mask = (conditions[idx][:, 0] == condition[0]) * (
+                            conditions[idx][:, 1] == condition.split('-')[1][0])
+                cond_masks[condition] = cond_mask
+                cond_inds = np.where(cond_mask)[0]
+                trial_count = len(cond_inds)
+                cond_min = cond_idx
+                cond_max = cond_idx+trial_count
+                cond_order[cond_min:cond_max] = cond_inds
+                cond_spikes_mask = [neuron_trials_flat==i for i in np.where(cond_mask)[0]]
+                cond_spikes = [neuron_spikes_flat[mask] for mask in cond_spikes_mask]
+                # cond_max, cond_min = cond_inds[0].max(), cond_inds[0].min()
+                cond_rect = mpl.patches.Rectangle((0, cond_min), width=max_time, height=cond_max-cond_min,
+                                                  color=condition_colors[condition], alpha=0.1)
+                ax.add_patch(cond_rect)
+                cond_idx = cond_max
+                ordered_spikes+=cond_spikes
+                # print(f'{condition}: {cond_inds}')
+        else:
+            ordered_spikes = neuron_spikes
+        ax.invert_yaxis()
+        # if conditions is not None:
+        #     ordered_spikes = [neuron_spikes[i] for i in cond_order]
+        # else:
+        #     ordered_spikes = neuron_spikes
+        ax.eventplot(ordered_spikes, color='k')
+        if conditions is not None:
+            cond_idx = 0
+            max_sdf = 0
+            cond_sdfs = {}
+            for cond_i, condition in enumerate(condition_colors.keys()):
+                cond_mask = cond_masks[condition]
+                trial_count = len(np.where(cond_mask)[0])
+                cond_min = cond_idx
+                cond_max = cond_min + trial_count
+                cond_idx = cond_max
+                # print(f'{condition}: {cond_min}:{cond_max}')
+                if sdf:
+                    cond_spike_list = []
+                    # for i in range(cond_mask.shape[0]):
+                    #     if cond_mask[i]:
+                    for i in np.arange(cond_min,cond_max):
+                        cond_spike_list.append(ordered_spikes[i])
+                    spike_input = np.concatenate(cond_spike_list)
+                    psth_input = np.ones((spike_input.shape[0],2))
+                    psth_input[:,1] = spike_input
+                    cond_psth = gen_psth(psth_input, binsize=binsize, window=np.array(window))
+                    cond_sdf, _ = gen_sdf(cond_psth[:, 1:], w=kernel_width, bin_size=binsize, ftype='Gauss',
+                                          multi_unit=False)
+                    cond_sdf = cond_sdf.squeeze()
+                    if max_sdf<cond_sdf.max():
+                        max_sdf = cond_sdf.max()
+                    cond_sdfs[condition] = {'sdf': cond_sdf, 'cond_max': cond_max, 'cond_min': cond_min}
+
+            for cond_i, condition in enumerate(condition_colors.keys()):
+                cond_vals = cond_sdfs[condition]
+                cond_sdf, cond_max, cond_min = cond_vals['sdf'], cond_vals['cond_max'], cond_vals['cond_min']
+                if event_means is not None:
+                    sides, event_mean = sdf_mean
+                    sdf_mean_val = event_mean[[side[:4]==condition[:4] for side in sides]]
+                    plot_mean_val = -sdf_mean_val*(cond_max - cond_min)*0.9 / max_sdf + cond_max
+                    ax.axhline(y=list(plot_mean_val), ls='--', alpha=0.5, c='black')
+                if baseline_means is not None:
+                    sides, baseline_mean = base_mean
+                    base_mean_val = baseline_mean[[side[:4]==condition[:4] for side in sides]]
+                    plot_base_val = -base_mean_val*(cond_max - cond_min)*0.9 / max_sdf + cond_max
+                    ax.axhline(y=list(plot_base_val), ls='--', alpha=0.5, c='grey')
+                sdf_scaled = -cond_sdf * (cond_max - cond_min)*0.9 / max_sdf + cond_max
+                ax.plot(cond_psth[:, 0], sdf_scaled, color=condition_colors[condition])
+                bbox= None
+                if indices is not None:
+                    if sig_neuron[cond_i]:
+                        bbox = dict(boxstyle="square", fc = 'none', ec="black", lw=2, pad=0.1)
+                ax.annotate(xy=(window[1] - 5, cond_min + 0.5), rotation=270, ha='right', va='top', text=condition,
+                            color=condition_colors[condition],
+                            alpha=0.8, fontsize=9.5, bbox=bbox)
+        for epoch_time in epoch_times:
+            ax.axvline(epoch_time, alpha=.8, color='k')
+
+    return fig, axs

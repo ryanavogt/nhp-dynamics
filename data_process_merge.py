@@ -49,7 +49,7 @@ binsize = 5
 kernel_width = 25
 trial_count = 100
 load_override_preprocess = False
-load_override = False
+load_override = True
 
 # Extract All Sessions from their Sorting Notes
 file_list = []
@@ -151,7 +151,7 @@ else:
                         orientation_mask = (trial_data['handOrien']-1)//2 == o_idx
                         for mod in [0,1]:
                             hand_mask = trial_data['handOrien']%2 == mod
-                            spike_mask = np.isin(channel_spikes[:, -1], np.where(hand_mask*orientation_mask*full_mask))
+                            spike_mask = np.isin(channel_spikes[:, -1]-1, np.where(hand_mask*orientation_mask*full_mask))
                             hand_label = hand_list[mod]
                             if area_hemisphere == hand_label:
                                 lateral_label = 'i'
@@ -319,8 +319,16 @@ for region in total_rates.keys():
     event_total_rates[region] = np.sum(list(event_total_rates[region].values()), axis=0)
     event_nzero_mask[region] = (event_total_rates[region]>0)
     event_total_rates[region] = event_total_rates[region][event_nzero_mask[region]]
-for region in area_rates.keys():
+joint_fig = plt.figure(figsize=(12, 6), layout='constrained')
+subfigs = joint_fig.subfigures(2,3, height_ratios=[1.5,1])
+plt.rcParams['figure.constrained_layout.use'] = True
+# plt.rcParams['figure.constrained_layout.w_pad'] = 1./72.
+# plt.rcParams['figure.constrained_layout.h_pad'] = 1./72.
+plt.rcParams['figure.constrained_layout.wspace'] = 0
+plt.rcParams['figure.constrained_layout.hspace'] = 0
+for reg_idx, region in enumerate(area_rates.keys()):
     print(region)
+    column = subfigs[:, reg_idx]
     for cond in area_rates[region].keys():
         rates = area_rates[region][cond]
         area_rates[region][cond] = np.vstack(rates).sum(axis=0)[nzero_mask[region]]
@@ -332,31 +340,35 @@ for region in area_rates.keys():
     event_score = (e_r['Grasp On'] - e_r['Cue']) / event_total_rates[region]
     hemisphere_score = (a_r['contralateral'] - a_r['ipsilateral']) / total_rates[region]
     upper_mosaic = [['histx', '.'],['scatter', 'histy']]
-    fig, axs = plt.subplot_mosaic(upper_mosaic, figsize=(6, 6), width_ratios=(4, 1.5), height_ratios=(1, 4),
-                                  layout='constrained')
+    axs = column[0].subplot_mosaic(upper_mosaic, width_ratios=(5, 1.2), height_ratios=(1, 5),)
+                                  # layout='constrained')
     ax = axs['scatter']
     tr = total_rates[region]
     norm = mpl.colors.LogNorm(vmin = np.nanmin(total_rates[region]), vmax = np.nanmax(total_rates[region]))
     scatter_hist(ax=axs['scatter'], ax_histx=axs['histx'], ax_histy=axs['histy'], y=orientation_score,
                  x=hemisphere_score, c=tr, norm='log')
-    plt.colorbar(cm.ScalarMappable(norm=norm), label='Total Rate', ax= axs['histy'])
-    plt.suptitle(f'Neuron Scores for {region}')
-    plt.gcf().text(1, 0.9, in_layout=False, ha='right', va='top',
-                                  s= f'x mean = {hemisphere_score.mean():.3f}, x std = {hemisphere_score.std():.3f}\ny mean = {event_score.mean():.3f}, y std = {event_score.std():.3f}')
-    ax.set_ylabel(f'Orientation Score (Vertical - Horizontal)')
+    plt.colorbar(cm.ScalarMappable(norm=norm), ax= axs['histy'])
+    # plt.suptitle(f'Neuron Scores for {region}')
+    # plt.gcf().text(1, 0.9, in_layout=False, ha='right', va='top',
+    #                               s= f'x mean = {hemisphere_score.mean():.3f}, x std = {hemisphere_score.std():.3f}\ny mean = {event_score.mean():.3f}, y std = {event_score.std():.3f}')
+    if reg_idx == 0:
+        ax.set_ylabel(f'Orientation Score (V - H)')
     # ax.set_ylabel(f'Event Score (Grasp - Cue)')
-    ax.set_xlabel(f'Hemisphere Score (Contra - Ipsi)')
+    ax.set_xlabel(f'Hemisphere Score (C - I)')
     ax.set_xlim([-1.03,1.03])
     ax.set_ylim([-1.03,1.03])
+    column[0].suptitle(region)
 
-    plt.savefig(f'{summary_dir}/neuronSelection_merged{len(monkey_name_map.keys())}_bin{binsize}_k{kernel_width}_{region}.png',
-                bbox_inches='tight', dpi=200)
+    # plt.savefig(f'{summary_dir}/neuronSelection_merged{len(monkey_name_map.keys())}_bin{binsize}_k{kernel_width}_{region}.png',
+    #             bbox_inches='tight', dpi=200)
 
     # plt.savefig(
     #     f'{summary_dir}/neuronSelectionEvent_merged{len(monkey_name_map.keys())}_bin{binsize}_k{kernel_width}_{region}.png',
     #     bbox_inches='tight', dpi=200)
 
-    f_cum, ax_cum = plt.subplots(figsize=(6,6))
+    # f_cum, ax_cum = plt.subplots(figsize=(6,6))
+    fig_cum = column[1]
+    ax_cum = fig_cum.subplots(1)
     # ax_cum = axs['cumulative']
     res_hem = sp.stats.ecdf(np.abs(hemisphere_score))
     res_ori = sp.stats.ecdf(np.abs(orientation_score))
@@ -367,8 +379,10 @@ for region in area_rates.keys():
     area_hem = ((q_hem[1:]-q_hem[:-1])*np.arange(1,q_hem.shape[0])).sum()/q_hem.shape[0]
     area_ori = ((q_ori[1:]-q_ori[:-1])*np.arange(1,q_ori.shape[0])).sum()/q_ori.shape[0]
     # area_event = ((q_event[1:] - q_event[:-1]) * np.arange(1, q_event.shape[0])).sum() / q_event.shape[0]
-    res_hem.cdf.plot(ax_cum, label=f'abs Hemi, AUC: {area_hem:.3f}', c='b')
-    res_ori.cdf.plot(ax_cum, label=f'abs Orient, AUC: {area_ori:.3f}', c ='r')
+    ax_cum.ecdf(np.abs(hemisphere_score), label=f'abs Hemi, AUC: {area_hem:.3f}', c='b')
+    ax_cum.ecdf(np.abs(orientation_score), label=f'abs Orient, AUC: {area_ori:.3f}', c='r')
+    # res_hem.cdf.plot(ax_cum, label=f'abs Hemi, AUC: {area_hem:.3f}', c='b')
+    # res_ori.cdf.plot(ax_cum, label=f'abs Orient, AUC: {area_ori:.3f}', c ='r')
     # res_event.cdf.plot(ax_cum, label=f'abs Event, AUC: {area_event:.3f}', c='r')
     # ax_cum.ecdf(np.abs(hemisphere_score), label='abs Hemi Index', c='b')
     # res_ori.cdf.plot(ax_cum, label=f'abs Orient, AUC: {area_ori:.3f}', c='r')

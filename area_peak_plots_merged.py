@@ -191,6 +191,8 @@ Generate plots after loading data
 plot_dict = {}
 max_dict = {}
 clustering_dict = {}
+clustering=False
+
 for area_label in area_summary_dict.keys():
     area_key, orientation = area_label.split('_')
     lat, region = area_key[0], area_key[1:]
@@ -203,12 +205,14 @@ for area_label in area_summary_dict.keys():
         plot_dict[region][orientation] = {}
         max_dict[region][orientation] = {}
         clustering_dict[region][orientation] = {}
-
     dend_fig, dend_axs = plt.subplots(nrows=2, ncols=1, figsize=(12,6))
     for event, dend_ax in zip(events, dend_axs):
         if event not in plot_dict[region][orientation]:
             plot_dict[region][orientation][event] = {}
             max_dict[region][orientation][event] = {}
+            clustering_dict[region][orientation][event] = {}
+        if not clustering:
+            continue
         neuron_count = area_summary_dict[area_label][event]['neurons']
         area_sdf = all_sdf_dict[area_label][event]
         norm_sdf = area_sdf.T/(np.expand_dims(area_sdf.max(axis=0), 1).repeat(area_sdf.shape[0], 1)+.000001)
@@ -223,7 +227,7 @@ for area_label in area_summary_dict.keys():
     dend_fig.savefig(f'{summary_dir}/ClusteringDendrogram_{area_label}.png', dpi=200)
     plt.close()
 
-skip_plots = True # To save time
+skip_plots = False # To save time
 neuron_plot_dir = f'{summary_dir}/Neuron Plots_merged{len(monkey_name_map.keys())}_bin{binsize}_kernel{kernel_width}'
 index_sides = ['ipsi', 'contra']
 for index_side in index_sides:
@@ -232,6 +236,7 @@ for index_side in index_sides:
     for region in plot_dict.keys():
         if skip_plots:
             break
+        print('Generating Spike Plots')
         for orientation in plot_dict[region].keys():
             neuron_count = area_summary_dict[f'c{region}_{orientation}']['trialGraspOn']['neurons'].astype(int)
             for event in plot_dict[region][orientation].keys():
@@ -240,10 +245,10 @@ for index_side in index_sides:
                 fig, axs = plt.subplots(1, 2, figsize=(8, 8))
                 for idx, lat in enumerate(['c', 'i']):
                     a = plot_dict[region][orientation][event][lat].T
-                    scaled_sdf = np.divide(a, max_rate, where= max_rate>0)
+                    scaled_sdf = np.divide(a, max_rate[:, np.newaxis], where= max_rate[:, np.newaxis]>0)
                     y, x = np.mgrid[1:neuron_count + 2:1,
                            window_range[0]/1000:window_range[1]/1000 + 2 * binsize/1000:binsize/1000]
-                    axs[idx].pcolor(x, y, scaled_sdf.T[peak_order],
+                    axs[idx].pcolor(x, y, scaled_sdf[peak_order],
                                cmap='inferno', norm = mpl.colors.Normalize(vmin=0, vmax=1.5))
                     axs[idx].axvline(x=0, color='w', linestyle=':')
                     axs[idx].invert_yaxis()
@@ -258,7 +263,7 @@ for index_side in index_sides:
 Identify epoch of maximal spike rate and find proportion of neurons with peak in each epoch.
 """
 epoch_names = ['trialRewardDrop', 'trialGraspOn']
-epoch_windows = {'trialRewardDrop': [0, 200], 'trialGraspOn':[-100, 500]}
+epoch_windows = {'trialRewardDrop': [0, 200], 'trialGraspOn':[-200, 800]}
 # epoch_windows = {'trialRewardDrop': [0, 100], 'trialReachOn': [-100, 200], 'trialGraspOn':[-100, 500]}
 # events = ['trialRewardDrop', 'trialReachOn', 'trialGraspOn', 'trialGraspOff']
 event_spike_maxes = {}

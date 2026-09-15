@@ -28,7 +28,7 @@ merged_count = len(monkey_name_map.keys())
 summary_dir = f'Data/Processed/Summary'
 pca_dir = f'{summary_dir}/PCA_b{binsize}_k{kernel_width}'
 indices_filename = f'{pca_dir}_pcIndices_merged{merged_count}.p'
-joint_indices_filename = f'{pca_dir}_pcIndicesJoint_merged{merged_count}.p'
+joint_indices_filename = f'{pca_dir}/pcIndicesJoint_merged{merged_count}.p'
 monkey_dict_filename = f'{pca_dir}/allMonkeyDict.p'
 
 cortex_list = ['M1', 'PMd', 'PMv']
@@ -41,8 +41,6 @@ joint_fig, joint_axes = plt.subplots(nrows=3, ncols=1, figsize=(18, 15))
 
 skip_old = True
 for cort_idx, cortex in enumerate(cortex_list):
-    if skip_old:
-        break
     neuron_fig, neuron_axes = plt.subplots(2,2, figsize=(20, 10))
     neuron_fig_zoomed, neuron_axes_zoomed = plt.subplots(2, 2, figsize=(20, 10))
     pca_filename = f'{pca_dir}/PCA_merged{merged_count}_{cortex}_b{binsize}_k{kernel_width}.p'
@@ -61,6 +59,8 @@ for cort_idx, cortex in enumerate(cortex_list):
     inds_list = []
     j_ax = joint_axes[cort_idx]
     for c_idx, condition in enumerate(cond_map):
+        if skip_old:
+            continue
         h_ax = neuron_axes[c_idx%2][c_idx//2]
         h_ax_z = neuron_axes_zoomed[c_idx%2][c_idx//2]
         v_cond = V[cond_map[condition][0]:cond_map[condition][1]]
@@ -96,22 +96,22 @@ for cort_idx, cortex in enumerate(cortex_list):
     j_ax.legend()
     j_ax.set_title(f'{cortex} V weights')
     j_ax.set_ylabel(f'Summed Neuron Value')
-    inds_list = np.vstack(inds_list)
-    all_indices[cortex] = inds_list
-    vals, counts = np.unique(inds_list[:, :zoomed_count]+1, return_counts= True)
-    neuron_fig.suptitle(f'PC Contribution for First 3 PCs in {cortex}')
-    neuron_fig.savefig(f'{pca_dir}/neuronComp_{cortex}.png', bbox_inches='tight', dpi=300)
-    neuron_fig_zoomed.suptitle(f'Top {zoomed_count} PC Contribution for First 3 PCs in {cortex}')
-    neuron_fig_zoomed.savefig(f'{pca_dir}/neuronCompZoomed_{cortex}.png', bbox_inches='tight', dpi=300)
-    hist_fig.suptitle(f'Histogram of Neuron PC Values Across Conditions, {cortex}')
-    hist_fig.savefig(f'{pca_dir}/neuronWeightHist_{cortex}.png', bbox_inches='tight', dpi=300)
-    cort_inds[cortex] = [vals, counts]
+    # inds_list = np.vstack(inds_list)
+    # all_indices[cortex] = inds_list
+    # vals, counts = np.unique(inds_list[:, :zoomed_count]+1, return_counts= True)
+    # neuron_fig.suptitle(f'PC Contribution for First 3 PCs in {cortex}')
+    # neuron_fig.savefig(f'{pca_dir}/neuronComp_{cortex}.png', bbox_inches='tight', dpi=300)
+    # neuron_fig_zoomed.suptitle(f'Top {zoomed_count} PC Contribution for First 3 PCs in {cortex}')
+    # neuron_fig_zoomed.savefig(f'{pca_dir}/neuronCompZoomed_{cortex}.png', bbox_inches='tight', dpi=300)
+    # hist_fig.suptitle(f'Histogram of Neuron PC Values Across Conditions, {cortex}')
+    # hist_fig.savefig(f'{pca_dir}/neuronWeightHist_{cortex}.png', bbox_inches='tight', dpi=300)
+    # cort_inds[cortex] = [vals, counts]
 
-joint_fig.suptitle(f'Abs Neuron Loading Value Sum for First 3 PCs')
-joint_fig.tight_layout()
-joint_fig.savefig(f'{pca_dir}/neuronJointCont.png', bbox_inches='tight', dpi=600)
-with open(indices_filename, 'wb') as indices_file:
-    pkl.dump(all_indices, indices_file)
+# joint_fig.suptitle(f'Abs Neuron Loading Value Sum for First 3 PCs')
+# joint_fig.tight_layout()
+# joint_fig.savefig(f'{pca_dir}/neuronJointCont.png', bbox_inches='tight', dpi=600)
+# with open(indices_filename, 'wb') as indices_file:
+#     pkl.dump(all_indices, indices_file)
 with open(joint_indices_filename, 'wb') as joint_indices_file:
     pkl.dump(joint_indices, joint_indices_file)
 # print(joint_indices)
@@ -123,7 +123,7 @@ joint_fig, joint_axes = plt.subplots(nrows=2, ncols=3, figsize=(12, 6), gridspec
 for cort_idx, cortex in enumerate(cortex_list):
     cort_ax = joint_axes[0][cort_idx]
     cdf_ax = joint_axes[1][cort_idx]
-    merged_V = merged_monkey.cortices[cortex]['SVD']['Full']['V']
+    merged_V = merged_monkey.cortices[cortex]['SVD']['Merged']['Full']['V']
     V_plot, V_indices = (merged_V[:,:3]**2).sqrt().sum(dim=1).sort(descending=True, dim=0)
     n_neurons = merged_monkey.cortices[cortex]['neurons']
     neuron_list = np.arange(n_neurons)
@@ -170,7 +170,7 @@ for orientation in ['horizontal', 'vertical']:
             cort_ax = joint_axes[0][cort_idx]
             cdf_ax = joint_axes[1][cort_idx]
             cum_ax = cum_axes[cort_idx]
-            merged_V = merged_monkey.cortices[cortex]['SVD']['Full']['V']
+            merged_V = merged_monkey.cortices[cortex]['SVD']['Merged']['Full']['V']
             V_plot, V_indices = (merged_V[:,:3]**2).sqrt().sum(dim=1).sort(descending=True, dim=0)
             n_neurons = merged_monkey.cortices[cortex]['neurons']
             neuron_list = np.arange(n_neurons)
@@ -219,7 +219,7 @@ for cort_idx, cortex in enumerate(cortex_list):
     score_filename = f'{summary_dir}/neuronSelection_scores_merged{len(monkey_name_map.keys())}_bin{binsize}_k{kernel_width}_{cortex}.p'
     with open(score_filename, 'rb') as score_file:
         score_dict = pkl.load(score_file)
-    merged_V = merged_monkey.cortices[cortex]['SVD']['Full']['V']
+    merged_V = merged_monkey.cortices[cortex]['SVD']['Merged']['Full']['V']
     V_sum = (merged_V[:, :3] ** 2).sqrt().sum(dim=1)
     V_plot, V_indices = V_sum.sort(descending=True, dim=0)
     hemisphere_score=score_dict['hemi_score']

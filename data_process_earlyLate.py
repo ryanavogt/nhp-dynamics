@@ -128,8 +128,8 @@ else:
                         neuron_spike_list = []
                         neuron_spikes = channel_spikes[channel_spikes[:,0]==neuron]
                         for trial in range(1, channel_conditions.shape[0]+1):
-                            neuron_spike_list.append(neuron_spikes[neuron_spikes[:,-1]==trial, 1])
-                        region_spike_list.append(neuron_spike_list)
+                            neuron_spike_list.append(neuron_spikes[neuron_spikes[:,-1]==trial, 1:])
+                        region_spike_list.append(np.vstack(neuron_spike_list))
                         for event in events:
                             all_events[area_label][event_map[event]].append(list(trial_data[event]))
                     for o_idx, orient in enumerate(['horizontal', 'vertical']):
@@ -152,14 +152,20 @@ else:
                                     area_summary_dict[region_key][event] = {'spikes':[], 'neurons': 0, 'trial_idcs':[]}
                                 event_times = trial_data[event][channel_spikes[:, -1].astype(int) - 1]
                                 event_spikes = np.vstack([channel_spikes[spike_mask, 0] + area_summary_dict[region_key][event]['neurons'],
-                                                  channel_spikes[spike_mask, 1] - event_times[spike_mask].astype(float)])
-                                area_summary_dict[region_key][event]['spikes'].append(event_spikes)
+                                                  channel_spikes[spike_mask, 1] - event_times[spike_mask].astype(float),
+                                                          channel_spikes[spike_mask, 2]])
+                                for neuron in np.arange(channel_neurons) + area_summary_dict[region_key][event]['neurons'] + 1:
+                                    area_summary_dict[region_key][event]['spikes'].append(event_spikes[:, event_spikes[0] == neuron])
+                                    area_summary_dict[region_key][event]['trial_idcs'].append(
+                                        channel_spikes[spike_mask, -1])
+                                # area_summary_dict[region_key][event]['spikes'].append(event_spikes)
                                 area_summary_dict[region_key][event]['neurons'] += channel_neurons
-                                area_summary_dict[region_key][event]['trial_idcs'].append(channel_spikes[spike_mask, -1])
+                                # area_summary_dict[region_key][event]['trial_idcs'].append(channel_spikes[spike_mask, -1])
                     for neuron in range(channel_neurons):
                         region_condition_list.append(channel_conditions)
                         area_indices[monkey].append(area_neuron_index)
                         area_neuron_index += 1
+
             all_monkey_indices[area_label]['count'] = area_neuron_index
             all_spikes[area_label]=region_spike_list
             all_conditions[area_label] = region_condition_list
@@ -200,7 +206,6 @@ else:
         lat = region_key[0]
         all_psth = []
         all_trial_psth = []
-        all_spikes = []
         all_sdf_dict[region_key] = {}
         all_psth_dict[region_key] = {}
         area_mean_rate[region_key] = {}
@@ -219,9 +224,9 @@ else:
                 neuron_spikes = area_summary_dict[region_key][event]['spikes'][:, neuron_mask]
                 if neuron_spikes.shape[1] == 0:
                     print(f'No spikes for neuron {neuron_idx+1}')
-                neuron_trials = area_summary_dict[region_key][event]['trial_idcs'][neuron_mask]
+                # neuron_trials = area_summary_dict[region_key][event]['trial_idcs'][neuron_mask]
                 neuron_spikes[0, :] = 1
-                psth_trials = trial_psth(neuron_spikes.T, neuron_trials, binsize=binsize, window=window_range, neurons=1)
+                psth_trials = trial_psth(neuron_spikes[:2].T, neuron_spikes[2], binsize=binsize, window=window_range, neurons=1)
                 psth_trials = np.stack(psth_trials, axis=-1)
                 neuron_psth = gen_psth(neuron_spikes.T, binsize=binsize, window=window_range, neurons=1)
                 if neuron_idx == 0:

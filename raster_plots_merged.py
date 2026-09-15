@@ -19,7 +19,7 @@ kernel_width = 25
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
 
 def raster_plot(neuron_list, region_spikes, event_list, epoch_window_map, conditions=None, n_cols=4, indices=None,
-                sdf = False, window = [0,820]):
+                sdf = False, window = [0,820], condition_colors={'cont-hori': 'orange', 'cont-vert': 'red', 'ipsi-hori': 'blue', 'ipsi-vert': 'green'}):
     total_neurons = np.array(neuron_list).shape[0]
     n_rows = math.ceil(total_neurons/n_cols)
     fig, axs = plt.subplots(nrows=math.ceil(total_neurons/n_cols),ncols=n_cols, figsize=(4*n_cols, 3.5*n_rows),
@@ -149,7 +149,7 @@ merged_count = len(monkey_name_map.keys())
 
 pca_dir = f'{summary_dir}/PCA_b{binsize}_k{kernel_width}'
 indices_filename = f'{pca_dir}_pcIndices_merged{merged_count}.p'
-joint_indices_filename = f'{pca_dir}_pcIndicesJoint_merged{merged_count}.p'
+joint_indices_filename = f'{pca_dir}/pcIndicesJoint_merged{merged_count}.p'
 
 epoch_window_map = {'Cue':      {'event': 'trialRewardDrop', 'window': [-200,   200]},
                    'Grasp On':  {'event': 'trialGraspOn',    'window': [-100,   500]}}
@@ -187,7 +187,7 @@ with open(joint_indices_filename, 'rb') as joint_indices_file:
     joint_indices = pkl.load(joint_indices_file)
 
 cond_map = {0:'ipsi-hori', 1:'ipsi-vert', 2:'contra-hori', 3:'contra-vert'}
-make_full_fig = True
+make_full_fig = False
 for region in selected_neurons.keys():
     print(f'{region}')
     region_conditions = all_conditions[region]
