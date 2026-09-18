@@ -1,3 +1,7 @@
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+del _sys, _os
+
 # The following packages are built-in for python builds
 import pickle as pkl                #Saving/loading data (built-in)
 import os                           #Directory Creation and Verification (built-in)
@@ -8,19 +12,17 @@ import pandas as pd                 #Loading tables
 import scipy.io as sio              #Loading matlab files
 
 # Local module(s)
-from  sig_proc import *             #Local module - for processing signal data
+from utils.sig_proc import *              #Local module - for processing signal data
+from config import (
+    MONKEY_LIST as m_list,
+    MONKEY_NAME_MAP as monkey_names_full,
+    M1_HEMISPHERE_MAP as monkey_M1_hemisphere,
+    SORTED_DIR as data_dir,
+    MATLAB_DIR as matlab_dir,
+    SORTING_DIR as sorting_dir,
+)
 
-m_list = ['G', 'R']#, 'B', 'Y']
-monkey_names_full = {'G':'Green', 'R':'Red', 'Y':'Yellow', 'B':'Blue'}
-monkey_name_dict = {}
-for monkey in m_list:
-    monkey_name_dict[monkey] = monkey_names_full[monkey]
-monkey_M1_hemisphere = {'Green': 'R', 'Red': 'R', 'Blue':'R', 'Yellow':'R'}
-
-#Define directories of data
-data_dir = 'Data/Sorted_Inactivation'
-matlab_dir = f'{data_dir}/matlabFiles'
-sorting_dir = f'{data_dir}/sortingNotes'
+monkey_name_dict = {m: monkey_names_full[m] for m in m_list}
 
 #Identify all data sessions
 file_list = []
@@ -115,55 +117,3 @@ for file in file_list:
 
     with open(f'{save_dir}/trial_data.p', 'wb') as f:
         pkl.dump(trial_data, f)
-
-    # area_spike_counts = {}
-    # area_neuron_counts = {}
-    # monkey_dir = f'{matlab_dir}/monk{monkey_name}2024Sorting_SQ'
-    # matlab_file_list = [f for f in glob.glob(f'{monkey_dir}/{year}_{month}_{day}*')]
-    # for matlab_file_name in matlab_file_list:
-    #     unit = int(matlab_file_name.split('.')[0][-1])
-    #     data = sio.loadmat(matlab_file_name)
-    #     area_spike_counts[unit] = {}
-    #     area_neuron_counts[unit] = {}
-    #     for area in neurons[unit].keys():
-    #         area_spike_count = 0
-    #         area_neuron_count = 0
-    #         rel_spike_times = {}
-    #         for sig, no_neurons in neurons[unit][area]:
-    #             trial_windows = np.vstack([trial_data['trialStartTimes'], trial_data['trialEnd']]).T
-    #             rel_spike_times[sig] = trial_splitter(data, trial_windows, sig)
-    #             area_neuron_count += no_neurons
-    #             area_spike_count += rel_spike_times[sig].shape[0]
-    #         with open(f'{save_dir}/spikeTimes_U{unit}_{area}.p', 'wb') as spike_time_file:
-    #             pkl.dump(rel_spike_times, spike_time_file)
-    #         area_spike_counts[unit][area] = area_spike_count
-    #         area_neuron_counts[unit][area] = area_neuron_count
-    #         print(f'Area: {area}, Neurons: {area_neuron_count}, Spikes: {area_spike_count}')
-    #     with open(f'{save_dir}/spikeCounts_U{unit}.p', 'wb') as spike_count_file:
-    #         pkl.dump(area_spike_counts[unit], spike_count_file)
-    #
-    #     # Record relative event times for each trial
-    #     events = ['trialRewardDrop', 'trialReachOn', 'trialGraspOn', 'trialGraspOff']
-    #     event_thresholds = {'trialRewardDrop':[500, 3000], 'trialReachOn':[200, 500],
-    #                         'trialGraspOn':[100, 600], 'trialGraspOff':[200, 1500]}
-    #     rel_event_times = {}
-    #     prev_times = 0
-    #     event_masks = []
-    #     full_mask = True
-    #     for event in events:
-    #         event_times = event_df[event].values
-    #         rel_event_times[event] = event_times - trial_data['trialStartTimes']
-    #         event_duration = rel_event_times[event] - prev_times
-    #         event_mask = (event_duration > event_thresholds[event][0])*(event_duration < event_thresholds[event][1])
-    #         prev_times = rel_event_times[event]
-    #         event_masks.append(event_mask)
-    #         full_mask = full_mask*event_mask
-    #
-    #     for event in events:
-    #         rel_event_times[event] = rel_event_times[event][full_mask]
-    #     print(f'Keep Proportion: {full_mask.sum()/full_mask.shape[0]}\n')
-    #
-    #     with open(f'{save_dir}/eventTimes.p', 'wb') as event_time_file:
-    #         pkl.dump(rel_event_times, event_time_file)
-    #     with open(f'{save_dir}/eventMasks.p', 'wb') as event_mask_file:
-    #         pkl.dump(full_mask, event_mask_file)

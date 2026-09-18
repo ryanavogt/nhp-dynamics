@@ -5,8 +5,25 @@ import os
 import pickle as pkl
 import random
 import torch
+from typing import Dict, List, TypedDict
 
-from sig_proc import *
+from .sig_proc import *
+
+
+# ── Type aliases ──────────────────────────────────────────────────────────────
+
+class SVDResult(TypedDict):
+    U:   torch.Tensor
+    S:   torch.Tensor
+    V:   torch.Tensor
+    sdf: torch.Tensor
+    cov: torch.Tensor
+
+class CortexData(TypedDict):
+    neurons: int
+    sdf:  Dict[str, Dict[str, np.ndarray]]   # epoch → condition → array
+    psth: Dict[str, Dict[str, np.ndarray]]   # epoch → condition → array
+    SVD:  Dict[str, Dict[str, SVDResult]]    # epoch → condition → SVDResult
 
 
 class Monkey:
@@ -20,7 +37,8 @@ class Monkey:
         self.cortices = {}
         self.condition_map = {}
         self.verbose=verbose
-        self.seed = random.seed(seed)
+        self.seed = seed
+        random.seed(seed)
 
 
     def save_monkey(self):
@@ -37,7 +55,7 @@ class Monkey:
     def set_condition_map(self, condition_map):
         self.condition_map = condition_map
 
-    def get_indices(self, monkey_indices, cortex):
+    def load_indices(self, monkey_indices, cortex):
         """
         Sets the object's indices for this cortex, needs to be repeated for all cortices
         :param monkey_indices: The set of all monkey indices corresponding to cortex (dict)
@@ -48,7 +66,7 @@ class Monkey:
         self.cortices[cortex]['neurons'] = len(monkey_indices[self.name])
         return self.monkey_indices[cortex]
 
-    def get_savedir(self, root_dir):
+    def set_save_dir(self, root_dir):
         """
         Sets the save directory for this monkey, where all related files (and subdirectories) will be saved
         :param root_dir: String of base directory
@@ -56,7 +74,7 @@ class Monkey:
         self.save_dir = f'{root_dir}/PCA_b{self.bin_size}_k{self.kernel_width}/Monkey{self.name}'
         return self.save_dir
 
-    def get_sdf(self, cort_sdf, cortex, epoch='Merged'):
+    def compute_sdf(self, cort_sdf, cortex, epoch='Merged'):
         """
         Split the sdf for the neurons of this monkey by cortex and by condition
         :param cort_sdf: Full sdf of this entire cortex (not split by monkey)
@@ -73,7 +91,7 @@ class Monkey:
         self.cortices[cortex]['sdf'] = {epoch: cortex_sdf}
         return cortex_sdf
 
-    def get_trial_psth(self, cort_psth, cortex, epoch='Merged'):
+    def compute_trial_psth(self, cort_psth, cortex, epoch='Merged'):
         self.check_cortex(cortex)
         cortex_psth = {}
         for (cond, cond_idcs) in self.condition_map[cortex].items():
@@ -81,7 +99,7 @@ class Monkey:
         self.cortices[cortex]['psth'] = {epoch: cortex_psth}
         return cortex_psth
 
-    def get_svd(self, cortex, epoch='Merged'):
+    def compute_svd(self, cortex, epoch='Merged'):
         """
         Split principal vectors (V) by condition for this cortex
         :param condition_map: Dictionary of indices for conditions in this cortex
@@ -116,7 +134,7 @@ class Monkey:
 
         return cortex_svd
 
-    def get_dmds(self, cortex, k_folds=5, verbose=False, permute = False, **dsa_kwargs):
+    def compute_dmds(self, cortex, k_folds=5, verbose=False, permute = False, **dsa_kwargs):
         split_data_dict = {}
         for cond, psth in self.cortices[cortex]['psth'].items():
             k_folds = min(k_folds, psth.shape[1])

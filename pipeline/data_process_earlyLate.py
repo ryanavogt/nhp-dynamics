@@ -1,47 +1,40 @@
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+del _sys, _os
+
 import pickle as pkl                #Saving/loading data (built-in)
 import os                           #Directory Creation and Verification (built-in)
 import glob
 
-# The following packages need to be installed in your virtual environment (usig conda or pip)
+# The following packages need to be installed in your virtual environment (using conda or pip)
 import matplotlib.pyplot as plt     #Generating plots
-from sig_proc import *
 import pandas as pd
 import matplotlib as mpl
 from matplotlib import cm
 import scipy as sp
 import numpy as np
 
-from sig_proc import *
-from plot_utils import *
+from utils.sig_proc import *
+from utils.plot_utils import apply_theme, scatter_hist
 from pandas.plotting import table
 
-import seaborn as sns
-os.environ['KMP_DUPLICATE_LIB_OK']='True'
+from config import (
+    MONKEY_NAME_MAP as monkey_name_map,
+    EVENT_MAP_EARLY_LATE as event_map,
+    EPOCH_WINDOW_MAP_EARLY_LATE as epoch_window_map,
+    SORTED_DIR as data_dir,
+    MATLAB_DIR as matlab_dir,
+    SORTING_DIR as sorting_dir,
+    LAT_MAP as lat_map,
+    HAND_LIST as hand_list,
+)
 
-sns.set_style(style='white')
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
+apply_theme()
 
-"""
-Define maps for reference:
-monkey_name_map: Map labels to full names   - Name label (R, G) -> Full name (Red, Green)
-event_map: Name of events for plotting      - Raw event name -> Shortened event name (for labels on plots)
-"""
-monkey_name_map = {'G':'Green', 'R':'Red', 'Y':'Yellow', 'B':'Blue'}
-event_map = {'trialRewardDrop': 'Early', 'trialGraspOn':'Late'}
-# Define the reference events and time window defining each epoch
-epoch_window_map = {'Early':        {'event': 'trialRewardDrop', 'window': [-500,   300]},
-                    'Late':         {'event': 'trialGraspOn',    'window': [-500,   300]}}
-
-#Define directories of data
-data_dir = 'Data/Sorted_Inactivation'
-matlab_dir = f'{data_dir}/matlabFiles'
-sorting_dir = f'{data_dir}/sortingNotes'
 summary_dir = f'Data/Processed/Summary/earlyLate'
-
 if not os.path.exists(summary_dir):
     os.mkdir(summary_dir)
-
-lat_map = {'c':'contralateral', 'i':'ipsilateral'}
-hand_list = ['R', 'L']
 events = ['trialRewardDrop', 'trialGraspOn']
 binsize = 5
 kernel_width = 25

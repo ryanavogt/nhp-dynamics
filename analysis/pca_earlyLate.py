@@ -1,3 +1,7 @@
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+del _sys, _os
+
 import pickle as pkl                #Saving/loading data (built-in)
 import os                           #Directory Creation and Verification (built-in)
 
@@ -7,11 +11,11 @@ import matplotlib as mpl
 from matplotlib.lines import Line2D
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib.colors as colors
-from plot_utils import pc_subplot, epoch_window_map
-from Monkey import *
+from utils.plot_utils import pc_subplot, epoch_window_map
+from utils.Monkey import *
 import numpy as np
 
-from sig_proc import *
+from utils.sig_proc import *
 
 import seaborn as sns
 sns.set_theme()
@@ -363,15 +367,15 @@ for cort_idx, cortex in enumerate(cortex_map.keys()):
         if monkey not in monkeys.keys():
             monkeys[monkey] = Monkey(monkey, kernel_width, binsize, epoch_window_map)
         monkey_obj = monkeys[monkey]
-        monkey_obj.get_indices(monkey_indices, cortex)
+        monkey_obj.load_indices(monkey_indices, cortex)
         monkey_obj.set_condition_map(condition_map)
-        monkey_obj.get_savedir(summary_dir)
+        monkey_obj.set_save_dir(summary_dir)
         for event in epoch_window_map.keys():
             sdf = merged_pop_sdf[event][cort[0]:cort[1]]
             psth = merged_pop_psth[event][cort[0]:cort[1]]  # cortex sdf
-            cortex_sdf = monkey_obj.get_sdf(sdf, cortex, epoch=event)
-            cortex_svd = monkey_obj.get_svd(cortex, epoch=event)
-            monkey_obj.get_trial_psth(psth, cortex, epoch=event)
+            cortex_sdf = monkey_obj.compute_sdf(sdf, cortex, epoch=event)
+            cortex_svd = monkey_obj.compute_svd(cortex, epoch=event)
+            monkey_obj.compute_trial_psth(psth, cortex, epoch=event)
 
             V_cort = cortex_svd['Full']['V']
             S_cort = cortex_svd['Full']['S']

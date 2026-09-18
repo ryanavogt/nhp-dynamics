@@ -1,3 +1,7 @@
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+del _sys, _os
+
 import pickle as pkl                #Saving/loading data (built-in)
 import os                           #Directory Creation and Verification (built-in)
 
@@ -9,8 +13,8 @@ import numpy as np
 from mpl_toolkits.mplot3d.axes3d import get_test_data
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib.colors as colors
-from plot_utils import pc_subplot
-from Monkey import Monkey
+from utils.plot_utils import pc_subplot
+from utils.Monkey import Monkey
 from DSA.simdist import SimilarityTransformDist
 from matplotlib.patches import Rectangle
 
@@ -67,7 +71,7 @@ else:
                     if not os.path.exists(delay_dir):
                         os.mkdir(delay_dir)
                     dmd_filename = f'{delay_dir}/dmd_{cortex}_rank{rank}_delays{n_delay}_kfold{k_folds}.p'
-                    test_losses, train_losses, dmds = monkey.get_dmds(cortex, k_folds = k_folds, n_delays=n_delay,
+                    test_losses, train_losses, dmds = monkey.compute_dmds(cortex, k_folds = k_folds, n_delays=n_delay,
                                                                                 rank=rank, delay_interval=1, device = 'cpu')
                     print(f'Monkey {monkey.name}, {cortex}, Rank {rank}, {n_delay} Delays DMD Test Losses: '
                           f'{[f'{cond}: {loss:.5f}' for cond, loss in test_losses.items()]}')

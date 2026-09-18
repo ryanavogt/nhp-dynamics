@@ -1,3 +1,7 @@
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+del _sys, _os
+
 import pickle as pkl                #Saving/loading data (built-in)
 import os                           #Directory Creation and Verification (built-in)
 import glob
@@ -6,12 +10,12 @@ import glob
 import matplotlib.pyplot as plt     #Generating plots
 from mpl_toolkits.mplot3d.axes3d import get_test_data
 
-from sig_proc import *
+from utils.sig_proc import *
 import pandas as pd
 import matplotlib as mpl
 import torch
 
-from sig_proc import *
+from utils.sig_proc import *
 
 import seaborn as sns
 

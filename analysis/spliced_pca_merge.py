@@ -1,3 +1,7 @@
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+del _sys, _os
+
 import pickle as pkl                #Saving/loading data (built-in)
 import os                           #Directory Creation and Verification (built-in)
 
@@ -9,11 +13,11 @@ import pandas
 from mpl_toolkits.mplot3d.axes3d import get_test_data
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib.colors as colors
-from plot_utils import pc_subplot, epoch_window_map
-from Monkey import *
+from utils.plot_utils import pc_subplot, epoch_window_map
+from utils.Monkey import *
 from scipy import stats
 
-from sig_proc import *
+from utils.sig_proc import *
 
 import seaborn as sns
 sns.set_theme()
@@ -398,11 +402,11 @@ for cort_idx, cortex in enumerate(cortex_map.keys()):
             monkeys[monkey] = Monkey(monkey, kernel_width, binsize, epoch_window_map)
         monkey_obj = monkeys[monkey]
         monkey_obj.set_condition_map(condition_map)
-        monkey_obj.get_indices(monkey_indices, cortex)
-        monkey_obj.get_savedir(summary_dir)
-        monkey_obj.get_sdf(cortex_pca_vals['sdf'], cortex)
-        monkey_obj.get_svd(cortex)
-        monkey_obj.get_trial_psth(cortex_pca_vals['psth'], cortex)
+        monkey_obj.load_indices(monkey_indices, cortex)
+        monkey_obj.set_save_dir(summary_dir)
+        monkey_obj.compute_sdf(cortex_pca_vals['sdf'], cortex)
+        monkey_obj.compute_svd(cortex)
+        monkey_obj.compute_trial_psth(cortex_pca_vals['psth'], cortex)
         fig = plt.figure(cortex, figsize=(7, 10))
         ax2 = fig.add_subplot(2, 2, 1)
         ax2a = fig.add_subplot(2, 2, 4)

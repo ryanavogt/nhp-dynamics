@@ -3,23 +3,22 @@ import seaborn as sns
 import numpy as np
 import colorsys
 import math
-from sig_proc import gen_psth, gen_sdf
+from .sig_proc import gen_psth, gen_sdf
 import matplotlib as mpl
 
-sns.set_theme()
-sns.set_style(style='white')
+# Import shared constants from central config — re-exported under the original names
+# so that existing callers (`from plot_utils import epoch_window_map`) still work.
+from config import (
+    EPOCH_WINDOW_MAP as epoch_window_map,
+    EVENT_TIMES as event_times,
+    TOTAL_TIME as current_time,
+)
 
-epoch_window_map = {'Cue':      {'event': 'trialRewardDrop', 'window': [-200,   100]},
-                   'Reach':     {'event': 'trialReachOn',    'window': [-100,    60]},
-                   'Grasp On':  {'event': 'trialGraspOn',    'window': [-60,    100]},
-                   'Grasp Off': {'event': 'trialGraspOff',   'window': [-100,   100]}}
-current_time = 0
-for epoch in epoch_window_map:
-    epoch_window_map[epoch]['time'] = current_time - epoch_window_map[epoch]['window'][0]
-    current_time = epoch_window_map[epoch]['time'] + epoch_window_map[epoch]['window'][1]
-event_times = {}
-for epoch in epoch_window_map.keys():
-    event_times[epoch] = epoch_window_map[epoch]['time']
+
+def apply_theme():
+    """Apply seaborn theme.  Call once at the start of a script, not on import."""
+    sns.set_theme()
+    sns.set_style(style='white')
 
 def pc_subplot(pca, axs, i, region='', plot_signals=1, window=[0], binsize=5, n_plot =4, projection = True,
                event_times=event_times):

@@ -1,3 +1,7 @@
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+del _sys, _os
+
 import pickle as pkl                #Saving/loading data (built-in)
 import os                           #Directory Creation and Verification (built-in)
 
@@ -10,7 +14,7 @@ import torch
 import scipy.stats as stats
 import pandas as pd
 
-from sig_proc import *
+from utils.sig_proc import *
 
 import seaborn as sns
 

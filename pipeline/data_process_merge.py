@@ -1,49 +1,40 @@
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+del _sys, _os
+
 import pickle as pkl                #Saving/loading data (built-in)
 import os                           #Directory Creation and Verification (built-in)
 import glob
 
-# The following packages need to be installed in your virtual environment (usig conda or pip)
+# The following packages need to be installed in your virtual environment (using conda or pip)
 import matplotlib.pyplot as plt     #Generating plots
-from sig_proc import *
 import pandas as pd
 import matplotlib as mpl
 from matplotlib import cm
 import scipy as sp
 import numpy as np
 
-from sig_proc import *
-from plot_utils import *
+from utils.sig_proc import *
+from utils.plot_utils import apply_theme, scatter_hist
 from pandas.plotting import table
 
-import seaborn as sns
-os.environ['KMP_DUPLICATE_LIB_OK']='True'
+from config import (
+    MONKEY_NAME_MAP as monkey_name_map,
+    EVENT_MAP_MERGE as event_map,
+    EPOCH_WINDOW_MAP_MERGE as epoch_window_map,
+    SORTED_DIR as data_dir,
+    MATLAB_DIR as matlab_dir,
+    SORTING_DIR as sorting_dir,
+    SUMMARY_DIR as summary_dir,
+    LAT_MAP as lat_map,
+    HAND_LIST as hand_list,
+)
 
-sns.set()
-sns.set_style(style='white')
-
-"""
-Define maps for reference:
-monkey_name_map: Map labels to full names   - Name label (R, G) -> Full name (Red, Green)
-event_map: Name of events for plotting      - Raw event name -> Shortened event name (for labels on plots)
-"""
-# monkey_name_map = {'R': 'Red', 'G': 'Green'}
-monkey_name_map = {'G':'Green', 'R':'Red', 'Y':'Yellow', 'B':'Blue'}
-event_map = {'trialRewardDrop': 'Cue', 'trialGraspOn':'Grasp On'}
-# Define the reference events and time window defining each epoch
-epoch_window_map = {'Cue':      {'event': 'trialRewardDrop', 'window': [-200,   200]},
-                   'Grasp On':  {'event': 'trialGraspOn',    'window': [-100,   500]}}
-
-#Define directories of data
-data_dir = 'Data/Sorted_Inactivation'
-matlab_dir = f'{data_dir}/matlabFiles'
-sorting_dir = f'{data_dir}/sortingNotes'
-summary_dir = f'Data/Processed/Summary'
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
+apply_theme()
 
 if not os.path.exists(summary_dir):
     os.mkdir(summary_dir)
-
-lat_map = {'c':'contralateral', 'i':'ipsilateral'}
-hand_list = ['R', 'L']
 events = ['trialRewardDrop', 'trialGraspOn']
 binsize = 5
 kernel_width = 25
@@ -99,7 +90,7 @@ else:
         print(date)
         monkey_folder = f'Monkey_{monkey_name_map[monkey]}'
         date_folder = f'{date[0:4]}_{date[4:6]}_{date[6:]}'
-        trial_dir = f'Data/Processed/{monkey_folder}/{date_folder}' #Folder where to find the session data
+        trial_dir = f'{data_dir}/{monkey_folder}/{date_folder}' #Folder where to find the session data
         with open(f'{trial_dir}/trial_data.p', 'rb') as trial_file:
             trial_data = pkl.load(trial_file)
         with open(f'{trial_dir}/eventMasks.p', 'rb') as event_mask_file:
@@ -211,9 +202,9 @@ ax.xaxis.set_label_position('top')
 ax.set_yticks([])
 table(ax, neuron_df, loc='center')
 plt.title(f'Monkey Region Neurons')
-plt.savefig(f'Data/Processed/Summary/monkeyNeurons.png', dpi = 300, bbox_inches = 'tight')
+plt.savefig(f'{summary_dir}/monkeyNeurons.png', dpi = 300, bbox_inches = 'tight')
 
-neuron_df.to_csv(f'Data/Processed/Summary/monkeyNeurons.csv')
+neuron_df.to_csv(f'{summary_dir}/monkeyNeurons.csv')
 
 """
 Generate plots of the max spiking rates for each area, side, and orientation.
@@ -322,8 +313,6 @@ for region in total_rates.keys():
 joint_fig = plt.figure(figsize=(12, 6), layout='constrained')
 subfigs = joint_fig.subfigures(2,3, height_ratios=[1.5,1])
 plt.rcParams['figure.constrained_layout.use'] = True
-# plt.rcParams['figure.constrained_layout.w_pad'] = 1./72.
-# plt.rcParams['figure.constrained_layout.h_pad'] = 1./72.
 plt.rcParams['figure.constrained_layout.wspace'] = 0
 plt.rcParams['figure.constrained_layout.hspace'] = 0
 for reg_idx, region in enumerate(area_rates.keys()):
@@ -348,58 +337,33 @@ for reg_idx, region in enumerate(area_rates.keys()):
     scatter_hist(ax=axs['scatter'], ax_histx=axs['histx'], ax_histy=axs['histy'], y=orientation_score,
                  x=hemisphere_score, c=tr, norm='log')
     plt.colorbar(cm.ScalarMappable(norm=norm), ax= axs['histy'])
-    # plt.suptitle(f'Neuron Scores for {region}')
-    # plt.gcf().text(1, 0.9, in_layout=False, ha='right', va='top',
-    #                               s= f'x mean = {hemisphere_score.mean():.3f}, x std = {hemisphere_score.std():.3f}\ny mean = {event_score.mean():.3f}, y std = {event_score.std():.3f}')
+
     if reg_idx == 0:
         ax.set_ylabel(f'Orientation Score (V - H)')
-    # ax.set_ylabel(f'Event Score (Grasp - Cue)')
     ax.set_xlabel(f'Hemisphere Score (C - I)')
     ax.set_xlim([-1.03,1.03])
     ax.set_ylim([-1.03,1.03])
     column[0].suptitle(region)
 
-    # plt.savefig(f'{summary_dir}/neuronSelection_merged{len(monkey_name_map.keys())}_bin{binsize}_k{kernel_width}_{region}.png',
-    #             bbox_inches='tight', dpi=200)
-
-    # plt.savefig(
-    #     f'{summary_dir}/neuronSelectionEvent_merged{len(monkey_name_map.keys())}_bin{binsize}_k{kernel_width}_{region}.png',
-    #     bbox_inches='tight', dpi=200)
-
-    # f_cum, ax_cum = plt.subplots(figsize=(6,6))
     fig_cum = column[1]
     ax_cum = fig_cum.subplots(1)
-    # ax_cum = axs['cumulative']
     res_hem = sp.stats.ecdf(np.abs(hemisphere_score))
     res_ori = sp.stats.ecdf(np.abs(orientation_score))
-    # res_event = sp.stats.ecdf(np.abs(event_score))
     q_hem = res_hem.cdf.quantiles
     q_ori = res_ori.cdf.quantiles
-    # q_event = res_event.cdf.quantiles
     area_hem = ((q_hem[1:]-q_hem[:-1])*np.arange(1,q_hem.shape[0])).sum()/q_hem.shape[0]
     area_ori = ((q_ori[1:]-q_ori[:-1])*np.arange(1,q_ori.shape[0])).sum()/q_ori.shape[0]
-    # area_event = ((q_event[1:] - q_event[:-1]) * np.arange(1, q_event.shape[0])).sum() / q_event.shape[0]
     ax_cum.ecdf(np.abs(hemisphere_score), label=f'abs Hemi, AUC: {area_hem:.3f}', c='b')
     ax_cum.ecdf(np.abs(orientation_score), label=f'abs Orient, AUC: {area_ori:.3f}', c='r')
-    # res_hem.cdf.plot(ax_cum, label=f'abs Hemi, AUC: {area_hem:.3f}', c='b')
-    # res_ori.cdf.plot(ax_cum, label=f'abs Orient, AUC: {area_ori:.3f}', c ='r')
-    # res_event.cdf.plot(ax_cum, label=f'abs Event, AUC: {area_event:.3f}', c='r')
-    # ax_cum.ecdf(np.abs(hemisphere_score), label='abs Hemi Index', c='b')
-    # res_ori.cdf.plot(ax_cum, label=f'abs Orient, AUC: {area_ori:.3f}', c='r')
-    # ax_cum.ecdf(np.abs(orientation_score), label='abs Orient Index', c ='r')
     ax_cum.plot([0,1], [0,1],'k--')
     ax_cum.set_ylabel('Cumulative Fraction')
     ax_cum.set_xlabel('abs Hemi and Orient Index')
-    # ax_cum.set_xlabel('abs Hemi and Event Index')
     ax_cum.set_title(f'{region} Selection Ratio')
     ax_cum.set_xlim([0,1])
     ax_cum.set_ylim([0,1])
     ax_cum.legend()
     plt.savefig(f'{summary_dir}/neuronSelectionCumulative_merged{len(monkey_name_map.keys())}_bin{binsize}_k{kernel_width}_{region}.png',
                 bbox_inches='tight', dpi=200)
-    # plt.savefig(
-    #     f'{summary_dir}/neuronSelectionCumulativeEvent_merged{len(monkey_name_map.keys())}_bin{binsize}_k{kernel_width}_{region}.png',
-    #     bbox_inches='tight', dpi=200)
     score_filename = f'{summary_dir}/neuronSelection_scores_merged{len(monkey_name_map.keys())}_bin{binsize}_k{kernel_width}_{region}.p'
     with open(score_filename, 'wb') as score_file:
         pkl.dump({'hemi_score':hemisphere_score, 'orient_score':orientation_score, 'event_score':event_score,

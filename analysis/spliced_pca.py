@@ -1,3 +1,7 @@
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+del _sys, _os
+
 import pickle as pkl                #Saving/loading data (built-in)
 import os                           #Directory Creation and Verification (built-in)
 
@@ -9,9 +13,9 @@ import torch
 from mpl_toolkits.mplot3d.axes3d import get_test_data
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib.colors as colors
-from plot_utils import pc_subplot, epoch_window_map
+from utils.plot_utils import pc_subplot, epoch_window_map
 
-from sig_proc import *
+from utils.sig_proc import *
 
 import seaborn as sns
 sns.set_theme()

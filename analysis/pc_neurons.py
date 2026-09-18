@@ -1,3 +1,7 @@
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+del _sys, _os
+
 import pickle as pkl                #Saving/loading data (built-in)
 import os                           #Directory Creation and Verification (built-in)
 
@@ -6,8 +10,9 @@ import matplotlib.pyplot as plt     #Generating plots
 import matplotlib as mpl
 from matplotlib.lines import Line2D
 import torch
+import numpy as np
 
-from sig_proc import *
+from utils.sig_proc import *
 
 import seaborn as sns
 
@@ -18,7 +23,7 @@ zoomed_count = 20
 n_pcs =3
 n_bins = 30
 
-summary_dir = f'Data/Processed/Summary'
+summary_dir = f'./Data/Processed/Summary'
 pca_dir = f'{summary_dir}/PCA_b{binsize}_k{kernel_width}'
 indices_filename = f'{pca_dir}_pcIndices.p'
 

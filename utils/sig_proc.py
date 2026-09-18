@@ -4,6 +4,17 @@ import math
 import torch
 import torch.nn.functional as F
 
+__all__ = [
+    'sig_name',
+    'trial_splitter',
+    'gen_psth',
+    'trial_psth',
+    'gen_sdf',
+    't_test',
+    'center_sdf',
+    'velocity',
+]
+
 def sig_name(signal):
     if signal < 10:
         return f'sig0{signal}'
@@ -101,10 +112,10 @@ def gen_sdf(psth, ftype, w, bin_size = 1, varargin = None, n_neurons=None, multi
     :return: sdf
     """
     f_map ={ # Options for kernel type
-        'boxcar': boxcar,
-        'Gauss': gauss,
-        'exp': exp,
-        'gpfa': gpfa
+        'boxcar': _boxcar,
+        'Gauss': _gauss,
+        'exp': _exp,
+        'gpfa': _gpfa,
     }
     if multi_unit:
         sdf = psth
@@ -115,7 +126,7 @@ def gen_sdf(psth, ftype, w, bin_size = 1, varargin = None, n_neurons=None, multi
     sdf, kernel = f_map[ftype](sdf.transpose(0, -1), w, bin_size)
     return sdf, kernel
 
-def gauss(sdf, w, bin_size=1):
+def _gauss(sdf, w, bin_size=1):
     gauss_width = max([11, 6*w+1])
     kernel = norm.pdf(np.arange(math.floor(-gauss_width/2), math.floor(gauss_width/2)+.01, step=bin_size), loc=0, scale=w)
     kernel_tensor = torch.Tensor(kernel).unsqueeze(0).unsqueeze(0)
@@ -129,7 +140,7 @@ def gauss(sdf, w, bin_size=1):
 
     return sdf, kernel
 
-def boxcar(sdf, w):
+def _boxcar(sdf, w):
     if ~(w % 2):
         w += 1
     kernel = np.ones((w, 1))/w
@@ -139,30 +150,20 @@ def boxcar(sdf, w):
 
     return sdf, kernel
 
-def exp(sdf, w):
+def _exp(sdf, w):
     filtbase = np.arange(1, np.min([3000, 5*w]))
     filtfunc = np.exp(-filtbase/w)
     kernel   = filtfunc/np.sum(filtfunc)
-    dummy = np.conv(sdf, kernel)
+    result = np.convolve(sdf.squeeze(), kernel, 'same')  # fixed: np.conv → np.convolve
     max_pos = np.argmax(kernel)
     temp = np.arange(start=-max_pos + 1, stop=kernel.size - max_pos + .01, step=1)
     kernel = np.vstack([temp, kernel])
-    return sdf, kernel
+    return result, kernel
 
-def gpfa(sdf, w, bin_size, s_n2=1e-3, tau=1):
-    s_f2 = 1-s_n2
-    T = sdf.shape[0]
-    ts = torch.arange(start=1, end=T+1, step=1)
-    channels = sdf.shape[-1]
-    K = torch.zeros((channels, T, T))
-    for i in range(channels):
-        for idx, t in enumerate(ts):
-            K1 = s_f2 * torch.exp(-(t-ts)**2/(2*tau**2))
-            K2 = s_n2 * torch.Tensor(t == ts)
-            K[i, idx] = K1 + K2
-        print(K[i])
-    print(K)
-            # print(K1 + K2)
+def _gpfa(sdf, w, bin_size, s_n2=1e-3, tau=1):
+    raise NotImplementedError(
+        "GPFA kernel is not yet implemented. Use ftype='Gauss' or 'boxcar' instead."
+    )
 
 def t_test(sdf1, sdf2, q=0.025, paired = False, type='two-sided'):
     if type not in ['two-sided', 'greater', 'less']:
@@ -202,5 +203,5 @@ def center_sdf(sdf):
 
 def velocity(proj, dims=3, dt=5):
     diffs = proj[1:, :dims]-proj[:-1, :dims]
-    spd = np.sqrt((diffs**2).sum(dim=-1))/dt
+    spd = np.sqrt((diffs**2).sum(axis=-1))/dt
     return spd

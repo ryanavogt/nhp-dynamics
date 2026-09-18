@@ -1,3 +1,7 @@
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+del _sys, _os
+
 import pickle as pkl                #Saving/loading data (built-in)
 import os                           #Directory Creation and Verification (built-in)
 import glob
@@ -5,14 +9,14 @@ import matplotlib as mpl
 
 # The following packages need to be installed in your virtual environment (using conda or pip)
 import matplotlib.pyplot as plt     #Generating plots
-from sig_proc import *
+from utils.sig_proc import *
 import pandas as pd
 import matplotlib as mpl
-from plot_utils import scale_lightness
+from utils.plot_utils import scale_lightness
 from scipy.cluster.hierarchy import ward, dendrogram, fcluster
 from scipy.spatial.distance import pdist
 
-from sig_proc import *
+from utils.sig_proc import *
 
 import seaborn as sns
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
