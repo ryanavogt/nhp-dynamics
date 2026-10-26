@@ -71,7 +71,7 @@ class Monkey:
         Sets the save directory for this monkey, where all related files (and subdirectories) will be saved
         :param root_dir: String of base directory
         """
-        self.save_dir = f'{root_dir}/PCA_b{self.bin_size}_k{self.kernel_width}/Monkey{self.name}'
+        self.save_dir = f'{root_dir}/Monkey{self.name}'
         return self.save_dir
 
     def compute_sdf(self, cort_sdf, cortex, epoch='Merged'):

@@ -14,7 +14,7 @@ For between-condition (off-diagonal) pairs: each subset independently draws
 TRIAL_FRACTION of each condition's trials; angles are computed between the
 two resulting subspaces.
 
-Outputs saved under Data/Processed/Summary/PCA_b{b}_k{k}/:
+Outputs saved under Results/PCA/data/PCA_b{b}_k{k}/:
     pop_dict_b{b}_k{k}_merged{n}.p          — population SDF + metadata
     AngleMatrix_{cortex}_monkey{m}_PCdims{d}.p  — angle statistics (mean/std/raw)
     event_marker_idx.p                       — event timing indices for plotting
@@ -40,7 +40,8 @@ from config import (
     EPOCH_WINDOW_MAP_MERGE as epoch_window_map,
     EPOCHS_MERGE     as epochs,
     TOTAL_TIME_MERGE as total_time,
-    SUMMARY_DIR      as summary_dir,
+    POPULATION_DIR,
+    PCA_RESULTS_DIR,
     LAT_MAP          as lat_map,
     BIN_SIZE         as binsize,
     KERNEL_WIDTH     as kernel_width,
@@ -57,19 +58,23 @@ N_DIMS         = 5      # Subspace dimensionality for principal angles
 NEW_POPDICT    = False  # Set True to rebuild the population SDF dict from scratch
 PCA_OVERWRITE  = True   # Set True to rerun SVD even if a saved PCA file exists
 
-all_x    = np.arange(0, total_time, binsize)
-pca_dir  = os.path.join(summary_dir, f'PCA_b{binsize}_k{kernel_width}')
-if not os.path.exists(pca_dir):
-    os.makedirs(pca_dir)
+all_x = np.arange(0, total_time, binsize)
+
+POPULATION_DATA = os.path.join(POPULATION_DIR, 'data')
+PCA_DATA        = os.path.join(PCA_RESULTS_DIR, 'data')
+PCA_FIGS        = os.path.join(PCA_RESULTS_DIR, 'figures')
+pca_dir         = os.path.join(PCA_DATA, f'PCA_b{binsize}_k{kernel_width}')
+for _d in [pca_dir, PCA_FIGS]:
+    os.makedirs(_d, exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # Load input files
 # ---------------------------------------------------------------------------
 print('Loading input files ...')
-durs_filename    = f'{summary_dir}/durs_list_merged{len(monkey_name_map)}.p'
-sdf_filename     = f'{summary_dir}/merged_sdfDict_bin{binsize}_k{kernel_width}_merged{len(monkey_name_map)}.p'
-psth_filename    = f'{summary_dir}/trialPSTH_bin{binsize}_k{kernel_width}_merged{len(monkey_name_map)}.p'
-monkey_filename  = f'{summary_dir}/monkey_indices_merged{len(monkey_name_map)}.p'
+durs_filename    = f'{POPULATION_DATA}/durs_list_merged{len(monkey_name_map)}.p'
+sdf_filename     = f'{POPULATION_DATA}/merged_sdfDict_bin{binsize}_k{kernel_width}_merged{len(monkey_name_map)}.p'
+psth_filename    = f'{POPULATION_DATA}/trialPSTH_bin{binsize}_k{kernel_width}_merged{len(monkey_name_map)}.p'
+monkey_filename  = f'{POPULATION_DATA}/monkey_indices_merged{len(monkey_name_map)}.p'
 
 with open(durs_filename,   'rb') as f: all_durs         = pkl.load(f)
 with open(sdf_filename,    'rb') as f: all_sdf_dict     = pkl.load(f)
@@ -223,7 +228,7 @@ for cort_idx, cortex in enumerate(cortex_map.keys()):
         monkey_obj = monkeys[monkey]
         monkey_obj.load_indices(monkey_indices, cortex)
         monkey_obj.set_condition_map(condition_map)
-        monkey_obj.set_save_dir(summary_dir)
+        monkey_obj.set_save_dir(pca_dir)
 
         # SVD and trial-averaged PSTH (writes into monkey_obj.cortices)
         monkey_obj.compute_sdf(sdf, cortex)
@@ -333,4 +338,39 @@ monkey_dict_file = os.path.join(pca_dir, 'allMonkeyDict.p')
 with open(monkey_dict_file, 'wb') as f:
     pkl.dump(monkeys, f)
 print(f'\nMonkey dict saved → {monkey_dict_file}')
+
+# ---------------------------------------------------------------------------
+# PC neuron indices — eigenvalue-weighted contribution (sorted descending)
+#
+# For each cortex, each neuron's contribution weight is computed as:
+#   w_i = sqrt( sum_j( λ_j * V_ij² ) / sum_j( λ_j ) )   for j in {1, 2, 3}
+# where λ_j = S_j² are the eigenvalues of the first 3 PCs and V_ij is
+# neuron i's loading on PC j from the merged ('All') monkey SVD.
+# Neurons are sorted by w_i descending; the resulting index array is used
+# by rasters_classes.py and pca_plot_neurons.py.
+#
+# Output: pcIndicesJoint_merged{n}.p
+# ---------------------------------------------------------------------------
+print('\nComputing PC neuron indices (eigenvalue-weighted contribution) ...')
+merged_monkey = monkeys['All']
+joint_indices = {}
+
+for cortex in cortex_map.keys():
+    merged_S  = merged_monkey.cortices[cortex]['SVD']['Merged']['Full']['S']
+    merged_V  = merged_monkey.cortices[cortex]['SVD']['Merged']['Full']['V']
+    eigvals   = merged_S[:3] ** 2
+    eig_total = (merged_S ** 2).sum()
+    _, V_indices = (
+        (eigvals * merged_V[:, :3] ** 2).sum(dim=1) / eig_total
+    ).sqrt().sort(descending=True, dim=0)
+    joint_indices[cortex] = V_indices
+    print(f'  {cortex}: indices computed ({merged_monkey.cortices[cortex]["neurons"]} neurons)')
+
+joint_indices_file = os.path.join(
+    pca_dir, f'pcIndicesJoint_merged{len(monkey_name_map)}.p'
+)
+with open(joint_indices_file, 'wb') as f:
+    pkl.dump(joint_indices, f)
+print(f'PC neuron indices saved → {joint_indices_file}')
+
 print('\npca_compute.py complete.')

@@ -7,41 +7,48 @@ figures for the neurons with the highest PC loadings in each region.
 Fix applied: line 94 bug — replaced `np.range()` (non-existent) with the correct
     `pc_indices[region][:plot_neurons]`.
 
-Figures saved under Data/Processed/Summary/PCA_b{b}_k{k}/:
+Figures saved under Results/PCA/figures/:
     Raster_PCs_{region}.png
     Event_Baseline_Correlation.png
+
+Data loaded from Results/Population/data/, Results/Modulation/data/,
+Results/Selectivity/data/, and Results/PCA/data/PCA_b{b}_k{k}/.
 """
 
 import os
 import pickle as pkl
 import sys
 
-import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
-import seaborn as sns
-from scipy.cluster.hierarchy import fcluster, ward
-from scipy.spatial.distance import pdist
 
 # ---------------------------------------------------------------------------
 # Ensure project root is on the path
 # ---------------------------------------------------------------------------
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
-from utils.sig_proc import gen_psth, gen_sdf
-from utils.plot_utils import add_headers, raster_plot, scale_lightness
+from utils.plot_utils import raster_plot, apply_theme
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
-sns.set()
-sns.set_style(style='white')
+apply_theme()
+
+from config import (
+    POPULATION_DIR, MODULATION_DIR, SELECTIVITY_DIR, PCA_RESULTS_DIR,
+    EPOCH_WINDOW_MAP_PLOT, TOTAL_TIME_PLOT, MONKEY_NAME_MAP, BIN_SIZE, KERNEL_WIDTH,
+)
+from plot_config import (
+    DPI_DRAFT,
+    DPI_FINAL,
+    REGION_TITLE_SIZE,
+    apply_rcparams,
+)
+apply_rcparams()
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 REGION_LIST = ['M1', 'PMd', 'PMv']
 
-from config import SUMMARY_DIR, EPOCH_WINDOW_MAP_PLOT, TOTAL_TIME_PLOT, MONKEY_NAME_MAP, BIN_SIZE, KERNEL_WIDTH
 MERGED_COUNT    = len(MONKEY_NAME_MAP)
 PLOT_NEURONS  = 10     # top N neurons per region to plot
 PLOT_COLUMNS  = 5
@@ -51,18 +58,23 @@ EPOCH_WINDOW = [0, TOTAL_TIME_PLOT]
 
 
 
-PCA_DIR       = os.path.join(SUMMARY_DIR, f'PCA_b{BIN_SIZE}_k{KERNEL_WIDTH}')
+POPULATION_DATA  = os.path.join(POPULATION_DIR,  'data')
+MODULATION_DATA  = os.path.join(MODULATION_DIR,  'data')
+SELECTIVITY_DATA = os.path.join(SELECTIVITY_DIR, 'data')
+PCA_DATA_DIR     = os.path.join(PCA_RESULTS_DIR, 'data', f'PCA_b{BIN_SIZE}_k{KERNEL_WIDTH}')
+PCA_FIG_DIR      = os.path.join(PCA_RESULTS_DIR, 'figures')
+os.makedirs(PCA_FIG_DIR, exist_ok=True)
 
 # Input file paths
-AREA_DICT_FILE  = f'{SUMMARY_DIR}/spike_summary_merged{MERGED_COUNT}.p'
-MOD_DF_FILE     = f'{SUMMARY_DIR}/MergedModDataFrame.p'
-# CLUSTER_FILE    = f'{SUMMARY_DIR}/Clusters.p'
-SPIKES_FILE     = f'{SUMMARY_DIR}/spike_list_merged{MERGED_COUNT}.p'
-INDICES_FILE    = f'{PCA_DIR}/pcIndicesJoint_merged{MERGED_COUNT}.p'
-EVENT_FILE      = f'{SUMMARY_DIR}/event_list_merged{MERGED_COUNT}.p'
-CONDITION_FILE  = f'{SUMMARY_DIR}/condition_list_merged{MERGED_COUNT}.p'
-MERGED_MOD_FILE = f'{SUMMARY_DIR}/MergedMods.p'
-ANOVA_FILE = f'{SUMMARY_DIR}/anova_results_merged{MERGED_COUNT}.p'
+AREA_DICT_FILE  = f'{POPULATION_DATA}/spike_summary_merged{MERGED_COUNT}.p'
+MOD_DF_FILE     = f'{MODULATION_DATA}/MergedModDataFrame.p'
+# CLUSTER_FILE    = f'{POPULATION_DATA}/Clusters.p'
+SPIKES_FILE     = f'{POPULATION_DATA}/spike_list_merged{MERGED_COUNT}.p'
+INDICES_FILE    = f'{PCA_DATA_DIR}/pcIndicesJoint_merged{MERGED_COUNT}.p'
+EVENT_FILE      = f'{POPULATION_DATA}/event_list_merged{MERGED_COUNT}.p'
+CONDITION_FILE  = f'{POPULATION_DATA}/condition_list_merged{MERGED_COUNT}.p'
+MERGED_MOD_FILE = f'{MODULATION_DATA}/MergedMods.p'
+ANOVA_FILE      = f'{SELECTIVITY_DATA}/anova_results_merged{MERGED_COUNT}.p'
 
 
 # ---------------------------------------------------------------------------
@@ -122,8 +134,13 @@ dir_abbrev = {'up': '↑', 'down': '↓'}
 # Explicit ticks at meaningful points: start, cue, grasp, end
 tick_positions = [0, cue_time, grasp_time, total_time]
 tick_labels = [int(t - cue_time) for t in tick_positions]
-for subfig, region in zip(subfigs, REGION_LIST):
-    # subfig.suptitle(region, fontsize=12, fontweight='bold', y=1.02)
+for letter, (subfig, region) in zip('ABC', zip(subfigs, REGION_LIST)):
+    subfig.text(
+        0.0, 1.0, rf'$\mathbf{{{letter}}}$-{region}',
+        transform=subfig.transSubfigure,
+        fontsize=REGION_TITLE_SIZE, fontweight='bold',
+        ha='left', va='bottom', clip_on=False,
+    )
 
     fr_mask = anova_fr_masks[region]
     all_event_means    = merged_mod_df[merged_mod_df['region'] == region]['event_mean']
@@ -198,14 +215,14 @@ for subfig, region in zip(subfigs, REGION_LIST):
     subfig.supylabel('Trial', fontsize=12, x=0.00, ha='left')
 
 combined_fig.subplots_adjust(left=0.04)
-combined_fig.savefig(f'{PCA_DIR}/Raster_PCs_combined{condition_string}.png',
-                     bbox_inches='tight', dpi=400)
+combined_fig.savefig(f'{PCA_FIG_DIR}/Raster_PCs_combined{condition_string}.png',
+                     bbox_inches='tight', dpi=DPI_FINAL)
 plt.close(combined_fig)
 
 
 sc_ax.legend()
-scatter_out = f'{PCA_DIR}/Event_Baseline_Correlation.png'
-scatter_fig.savefig(scatter_out, bbox_inches='tight', dpi=300)
+scatter_out = f'{PCA_FIG_DIR}/Event_Baseline_Correlation.png'
+scatter_fig.savefig(scatter_out, bbox_inches='tight', dpi=DPI_DRAFT)
 plt.close(scatter_fig)
 print(f'Saved {scatter_out}')
 

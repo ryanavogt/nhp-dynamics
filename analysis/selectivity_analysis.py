@@ -15,13 +15,20 @@ from config import (
     MONKEY_NAME_MAP        as monkey_name_map,
     EPOCH_WINDOW_MAP_MERGE as epoch_window_map,
     EPOCHS_MERGE           as epochs,
-    SUMMARY_DIR            as summary_dir,
+    SELECTIVITY_DIR,
+    POPULATION_DIR,
     LAT_MAP                as lat_map,
     BIN_SIZE               as binsize,
     KERNEL_WIDTH           as kernel_width,
 )
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
+
+POPULATION_DATA  = os.path.join(POPULATION_DIR,  'data')
+SELECTIVITY_DATA = os.path.join(SELECTIVITY_DIR, 'data')
+SELECTIVITY_FIGS = os.path.join(SELECTIVITY_DIR, 'figures')
+for _d in [SELECTIVITY_DATA, SELECTIVITY_FIGS]:
+    os.makedirs(_d, exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # Parameters
@@ -37,11 +44,11 @@ load_anova      = False
 # ---------------------------------------------------------------------------
 # Load pipeline outputs
 # ---------------------------------------------------------------------------
-area_mean_filename = (f'{summary_dir}/areaMeanRates_bin{binsize}_k{kernel_width}'
+area_mean_filename = (f'{POPULATION_DATA}/areaMeanRates_bin{binsize}_k{kernel_width}'
                       f'_merged{n_monkeys}.p')
-all_psth_filename  = (f'{summary_dir}/trialPSTH_bin{binsize}_k{kernel_width}'
+all_psth_filename  = (f'{POPULATION_DATA}/trialPSTH_bin{binsize}_k{kernel_width}'
                       f'_merged{n_monkeys}.p')
-neuron_csv_filename = os.path.join(summary_dir, 'monkeyNeurons.csv')
+neuron_csv_filename = os.path.join(POPULATION_DATA, 'monkeyNeurons.csv')
 
 with open(area_mean_filename, 'rb') as f:
     area_mean_rate, event_mean_rate = pkl.load(f)
@@ -115,7 +122,7 @@ for region in area_rates.keys():
     hemisphere_score  = (a_r['contralateral'] - a_r['ipsilateral']) / total_rates[region]
     tr                = total_rates[region] / fr_scaling   # convert to Hz
     score_filename    = os.path.join(
-        summary_dir,
+        SELECTIVITY_DATA,
         f'neuronSelection_scores_merged{n_monkeys}_bin{binsize}_k{kernel_width}_{region}.p')
     with open(score_filename, 'wb') as f:
         pkl.dump({
@@ -133,16 +140,8 @@ for region in area_rates.keys():
 # ---------------------------------------------------------------------------
 # ANOVA computation
 # Output: anova_results_merged{n}.p
-#
-# Saved keys:
-#   significance[region][epoch]  : np.array shape (n_neurons, 3), dtype bool
-#                                  columns: [hand_sig, ori_sig, interaction_sig]
-#   pvalues[region][epoch]       : np.array shape (n_neurons, 3), dtype float
-#                                  columns: [p_hand, p_ori, p_interaction]
-#                                  NaN for neurons excluded by fr_mask or zero-variance
-#   fr_mask[region]              : np.array shape (n_neurons,), dtype bool
 # ---------------------------------------------------------------------------
-anova_file_name = os.path.join(summary_dir, f'anova_results_merged{n_monkeys}.p')
+anova_file_name = os.path.join(SELECTIVITY_DATA, f'anova_results_merged{n_monkeys}.p')
 orients         = ['horizontal', 'vertical']
 lats            = ['c', 'i']
 anova_p         = 0.01
@@ -151,10 +150,10 @@ if load_anova:
     with open(anova_file_name, 'rb') as f:
         anova_results      = pkl.load(f)
         anova_significance = anova_results['significance']
-        anova_pvalues      = anova_results['pvalues']       # <<< NEW: load p-values too
+        anova_pvalues      = anova_results['pvalues']
 else:
     anova_significance = {region: {epoch: [] for epoch in epochs} for region in regions}
-    anova_pvalues      = {region: {epoch: [] for epoch in epochs} for region in regions}  # <<< NEW
+    anova_pvalues      = {region: {epoch: [] for epoch in epochs} for region in regions}
     for region in regions:
         print(f'Starting ANOVA for {region}')
         fr_mask = fr_masks[region]
@@ -162,7 +161,7 @@ else:
             if not fr_mask[neuron_idx]:
                 for epoch in epochs:
                     anova_significance[region][epoch].append([False, False, False])
-                    anova_pvalues[region][epoch].append([np.nan, np.nan, np.nan])  # <<< NEW
+                    anova_pvalues[region][epoch].append([np.nan, np.nan, np.nan])
                 continue
             for e_idx, epoch in enumerate(epochs):
                 trial_rates_all = []
@@ -183,7 +182,7 @@ else:
                 })
                 if df['rate'].var() == 0 or df['rate'].isna().all():
                     anova_significance[region][epoch].append([False, False, False])
-                    anova_pvalues[region][epoch].append([np.nan, np.nan, np.nan])  # <<< NEW
+                    anova_pvalues[region][epoch].append([np.nan, np.nan, np.nan])
                     continue
                 aov   = pg.anova(data=df, dv='rate', between=['hand', 'orientation'],
                                  detailed=True)
@@ -194,16 +193,16 @@ else:
                 }
                 anova_significance[region][epoch].append(
                     [anova[k] < anova_p for k in anova.keys()])
-                anova_pvalues[region][epoch].append(                         # <<< NEW
-                    [anova['p_hand'], anova['p_ori'], anova['p_int']])       # <<< NEW
+                anova_pvalues[region][epoch].append(
+                    [anova['p_hand'], anova['p_ori'], anova['p_int']])
     for region in regions:
         for epoch in epochs:
             anova_significance[region][epoch] = np.array(anova_significance[region][epoch])
-            anova_pvalues[region][epoch]      = np.array(anova_pvalues[region][epoch])  # <<< NEW
+            anova_pvalues[region][epoch]      = np.array(anova_pvalues[region][epoch])
     with open(anova_file_name, 'wb') as f:
         pkl.dump({
             'significance': anova_significance,
-            'pvalues':      anova_pvalues,       # <<< NEW
+            'pvalues':      anova_pvalues,
             'fr_mask':      fr_masks,
         }, f)
     print(f'ANOVA results saved → {anova_file_name}')

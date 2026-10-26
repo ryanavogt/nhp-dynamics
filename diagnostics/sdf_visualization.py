@@ -20,7 +20,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import glob
 
-from config import SUMMARY_DIR, EPOCH_WINDOW_MAP_MERGE, TOTAL_TIME_MERGE
+from OLD.config import SUMMARY_DIR, EPOCH_WINDOW_MAP_MERGE, TOTAL_TIME_MERGE
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
 parser = argparse.ArgumentParser()

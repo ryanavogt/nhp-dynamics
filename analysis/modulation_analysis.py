@@ -11,7 +11,8 @@ import numpy as np
 import pandas as pd
 
 from config import (
-    SUMMARY_DIR,
+    MODULATION_DIR,
+    POPULATION_DIR,
     MONKEY_NAME_MAP,
     EVENT_MAP_MERGE      as event_map,
     EPOCH_WINDOW_MAP_MERGE as epoch_window_map,
@@ -31,21 +32,25 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 # ---------------------------------------------------------------------------
 # Parameters
 # ---------------------------------------------------------------------------
-summary_dir = SUMMARY_DIR
+POPULATION_DATA = os.path.join(POPULATION_DIR, 'data')
+MODULATION_DATA = os.path.join(MODULATION_DIR, 'data')
+MODULATION_FIGS = os.path.join(MODULATION_DIR, 'figures')
+for _d in [MODULATION_DATA, MODULATION_FIGS]:
+    os.makedirs(_d, exist_ok=True)
 
-load_override = True
+load_override = False
 
 # ---------------------------------------------------------------------------
 # File paths
 # ---------------------------------------------------------------------------
-spike_file_name     = f'{SUMMARY_DIR}/spike_list_merged{len(MONKEY_NAME_MAP)}.p'
-event_file_name     = f'{SUMMARY_DIR}/event_list_merged{len(MONKEY_NAME_MAP)}.p'
-condition_file_name = f'{SUMMARY_DIR}/condition_list_merged{len(MONKEY_NAME_MAP)}.p'
-all_sdf_filename    = f'{summary_dir}/merged_sdfDict_bin{binsize}_k{kernel_width}_orientMerged.p'
-lat_ttest_filename  = f'{summary_dir}/laterality_ttest_dict.p'
-merged_mods_filename  = f'{summary_dir}/MergedMods.p'
-merged_df_filename    = f'{summary_dir}/MergedModDataFrame.p'
-hand_use_mod_filename = f'{summary_dir}/HandUseMod.p'
+spike_file_name     = f'{POPULATION_DATA}/spike_list_merged{len(MONKEY_NAME_MAP)}.p'
+event_file_name     = f'{POPULATION_DATA}/event_list_merged{len(MONKEY_NAME_MAP)}.p'
+condition_file_name = f'{POPULATION_DATA}/condition_list_merged{len(MONKEY_NAME_MAP)}.p'
+all_sdf_filename    = f'{POPULATION_DATA}/merged_sdfDict_bin{binsize}_k{kernel_width}_orientMerged.p'
+lat_ttest_filename  = f'{MODULATION_DATA}/laterality_ttest_dict.p'
+merged_mods_filename  = f'{MODULATION_DATA}/MergedMods.p'
+merged_df_filename    = f'{MODULATION_DATA}/MergedModDataFrame.p'
+hand_use_mod_filename = f'{MODULATION_DATA}/HandUseMod.p'
 
 # ---------------------------------------------------------------------------
 # Load shared data
@@ -175,10 +180,10 @@ for region_key in all_sdf_dict.keys():   # 'cM1', 'iM1', 'cPMd', ...
 
             n_b, n_e = len(baseline_rates), len(event_rates)
             if n_b == n_e and n_b > 1:
-                t_stats[neuron_idx], p_vals[neuron_idx] = ttest_rel(event_rates, baseline_rates)
+                t_stats[neuron_idx], p_vals[neuron_idx] = ttest_rel(baseline_rates, event_rates)
             elif n_b > 1 and n_e > 1:
                 t_stats[neuron_idx], p_vals[neuron_idx] = ttest_ind(
-                    event_rates, baseline_rates, equal_var=False)
+                    baseline_rates, event_rates, equal_var=False)
 
         valid  = ~np.isnan(p_vals)
         reject = np.zeros(n_neurons, dtype=bool)

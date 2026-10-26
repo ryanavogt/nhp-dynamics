@@ -8,7 +8,7 @@ import matplotlib as mpl
 
 # Import shared constants from central config — re-exported under the original names
 # so that existing callers (`from plot_utils import epoch_window_map`) still work.
-from config import (
+from OLD.config import (
     EPOCH_WINDOW_MAP as epoch_window_map,
     EVENT_TIMES as event_times,
     TOTAL_TIME as current_time,

@@ -20,7 +20,7 @@ from config import (
     EPOCHS_MERGE            as epochs,
     EVENTS_MERGE            as events,
     SORTING_DIR             as sorting_dir,
-    SUMMARY_DIR             as summary_dir,
+    POPULATION_DIR,
     PROCESSED_DIR           as processed_dir,
     LAT_MAP                 as lat_map,
     HAND_LIST               as hand_list,
@@ -31,8 +31,10 @@ from config import (
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
-if not os.path.exists(summary_dir):
-    os.mkdir(summary_dir)
+POPULATION_DATA = os.path.join(POPULATION_DIR, 'data')
+POPULATION_FIGS = os.path.join(POPULATION_DIR, 'figures')
+for _d in [POPULATION_DATA, POPULATION_FIGS]:
+    os.makedirs(_d, exist_ok=True)
 
 trial_count              = 100
 load_override_preprocess = False
@@ -72,12 +74,12 @@ all_events         = {
 }
 
 n_monkeys           = len(monkey_name_map.keys())
-summary_file_name   = f'{summary_dir}/spike_summary_merged{n_monkeys}.p'
-spike_file_name     = f'{summary_dir}/spike_list_merged{n_monkeys}.p'
-event_file_name     = f'{summary_dir}/event_list_merged{n_monkeys}.p'
-condition_file_name = f'{summary_dir}/condition_list_merged{n_monkeys}.p'
-durs_file_name      = f'{summary_dir}/durs_list_merged{n_monkeys}.p'
-monkey_file_name    = f'{summary_dir}/monkey_indices_merged{n_monkeys}.p'
+summary_file_name   = f'{POPULATION_DATA}/spike_summary_merged{n_monkeys}.p'
+spike_file_name     = f'{POPULATION_DATA}/spike_list_merged{n_monkeys}.p'
+event_file_name     = f'{POPULATION_DATA}/event_list_merged{n_monkeys}.p'
+condition_file_name = f'{POPULATION_DATA}/condition_list_merged{n_monkeys}.p'
+durs_file_name      = f'{POPULATION_DATA}/durs_list_merged{n_monkeys}.p'
+monkey_file_name    = f'{POPULATION_DATA}/monkey_indices_merged{n_monkeys}.p'
 
 if os.path.exists(summary_file_name) and not load_override_preprocess:
     with open(summary_file_name, 'rb') as f:
@@ -208,7 +210,7 @@ for region in regions:
     for monkey in monkeys:
         region_neurons[region][monkey] = len(all_monkey_indices[region][monkey])
 neuron_df = pd.DataFrame.from_dict(region_neurons, orient='index')
-neuron_df.to_csv(os.path.join(summary_dir, 'monkeyNeurons.csv'))
+neuron_df.to_csv(os.path.join(POPULATION_DATA, 'monkeyNeurons.csv'))
 
 # ---------------------------------------------------------------------------
 # BLOCK B: SDF / PSTH computation (epoch-windowed, used for scores and ANOVA)
@@ -217,11 +219,11 @@ neuron_df.to_csv(os.path.join(summary_dir, 'monkeyNeurons.csv'))
 # ---------------------------------------------------------------------------
 area_mean_rate  = {}
 event_mean_rate = {}
-all_sdf_filename   = (f'{summary_dir}/merged_sdfDict_bin{binsize}_k{kernel_width}'
+all_sdf_filename   = (f'{POPULATION_DATA}/merged_sdfDict_bin{binsize}_k{kernel_width}'
                       f'_merged{n_monkeys}.p')
-area_mean_filename = (f'{summary_dir}/areaMeanRates_bin{binsize}_k{kernel_width}'
+area_mean_filename = (f'{POPULATION_DATA}/areaMeanRates_bin{binsize}_k{kernel_width}'
                       f'_merged{n_monkeys}.p')
-all_psth_filename  = (f'{summary_dir}/trialPSTH_bin{binsize}_k{kernel_width}'
+all_psth_filename  = (f'{POPULATION_DATA}/trialPSTH_bin{binsize}_k{kernel_width}'
                       f'_merged{n_monkeys}.p')
 
 if os.path.exists(all_sdf_filename) and not load_override:
@@ -265,7 +267,7 @@ else:
                     'trial_idcs'][neuron_mask]
                 conds             = all_conditions[region][neuron_idx]
                 neuron_trial_list = np.where(
-                    (conds[:, 0] == lat) & (conds[:, 1] == orient[0]))[0] + 1
+                    (conds[:, 0] == lat) & (conds[:, 1] == orient[0]))[0]
                 neuron_spikes[0, :] = 1
                 psth_trials = trial_psth(
                     neuron_spikes.T, neuron_trials, binsize=binsize,
@@ -301,7 +303,7 @@ else:
 # ---------------------------------------------------------------------------
 orient_area_dict  = {}
 orient_areas      = []
-orient_spike_name = f'{summary_dir}/spike_summary.p'
+orient_spike_name = f'{POPULATION_DATA}/spike_summary.p'
 
 if os.path.exists(orient_spike_name) and not load_override_preprocess:
     with open(orient_spike_name, 'rb') as f:
@@ -368,7 +370,7 @@ else:
 # Output: mergedSpikeDict.p
 # ---------------------------------------------------------------------------
 merged_summary_dict  = {}
-merged_dict_filename = f'{summary_dir}/mergedSpikeDict.p'
+merged_dict_filename = f'{POPULATION_DATA}/mergedSpikeDict.p'
 
 for region_key in orient_area_dict.keys():
     latArea, orient = region_key.split('_')
@@ -397,11 +399,11 @@ with open(merged_dict_filename, 'wb') as f:
 # ---------------------------------------------------------------------------
 window_range            = np.array(WINDOW_RANGE)
 area_max_rate           = {}
-all_orient_sdf_filename = (f'{summary_dir}/merged_sdfDict_bin{binsize}_k{kernel_width}'
+all_orient_sdf_filename = (f'{POPULATION_DATA}/merged_sdfDict_bin{binsize}_k{kernel_width}'
                            f'_orientMerged.p')
-max_rate_filename       = (f'{summary_dir}/sdfMaxRate_bin{binsize}_k{kernel_width}'
+max_rate_filename       = (f'{POPULATION_DATA}/sdfMaxRate_bin{binsize}_k{kernel_width}'
                            f'_orientMerged.p')
-peak_order_filename     = (f'{summary_dir}/peakOrderDict_bin{binsize}_k{kernel_width}'
+peak_order_filename     = (f'{POPULATION_DATA}/peakOrderDict_bin{binsize}_k{kernel_width}'
                            f'_orientMerged.p')
 
 if os.path.exists(all_orient_sdf_filename) and not load_override:
@@ -454,7 +456,7 @@ else:
 # Neuron peaks — identify epoch of maximal firing per neuron
 # Output: neuron_peaks.p
 # ---------------------------------------------------------------------------
-neuron_peaks_filename = f'{summary_dir}/neuron_peaks.p'
+neuron_peaks_filename = f'{POPULATION_DATA}/neuron_peaks.p'
 full_window   = np.arange(WINDOW_RANGE[0], WINDOW_RANGE[1] + binsize, binsize)
 active_epochs = [ep for ep in epochs if ep != 'Pre-Cue']
 
@@ -517,7 +519,7 @@ print('Neuron peaks saved')
 # ---------------------------------------------------------------------------
 grasp_event           = epoch_window_map['Grasp']['event']
 heatmap_corr          = {}
-heatmap_corr_filename = (f'{summary_dir}/heatmapCorr_bin{binsize}_k{kernel_width}'
+heatmap_corr_filename = (f'{POPULATION_DATA}/heatmapCorr_bin{binsize}_k{kernel_width}'
                          f'_orientMerged.p')
 
 for region in regions:

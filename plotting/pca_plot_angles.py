@@ -1,12 +1,14 @@
 """
-pca_plot_angles.py — Principal angle difference bar charts.
+pca_plot_angles-2.py — Principal angle difference bar charts.
 
 Loads AngleMatrix files produced by pca_compute.py and plots the pairwise
 difference in leading principal angles across all condition pairs,
 with error bars propagated from the across-subset SD.
 
-Figures saved under Data/Processed/Summary/PCA_b{b}_k{k}/:
+Figures saved under Results/PCA/figures/:
     PrincipalAngleDiff_monkey{m}_{diff_mode}.png
+
+Data loaded from Results/PCA/data/PCA_b{b}_k{k}/.
 """
 
 import sys as _sys, os as _os
@@ -18,25 +20,33 @@ import os
 import pickle as pkl
 import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
 
+from utils.plot_utils import apply_theme
 from config import (
-    MONKEY_NAME_MAP as monkey_name_map,
-    SUMMARY_DIR     as summary_dir,
+    PCA_RESULTS_DIR,
     BIN_SIZE        as binsize,
     KERNEL_WIDTH    as kernel_width,
+    N_DIMS,
+)
+from plot_config import (
+    DPI_DRAFT,
+    ANNOT_SMALL,
+    apply_rcparams,
 )
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
-sns.set_theme(); sns.set_style(style='white')
+apply_theme()
+apply_rcparams()
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-N_DIMS    = 5           # Must match pca_compute.py
 DIFF_MODE = 'absolute'  # 'absolute' or 'relative'
 
-pca_dir          = os.path.join(summary_dir, f'PCA_b{binsize}_k{kernel_width}')
+PCA_DATA         = os.path.join(PCA_RESULTS_DIR, 'data')
+PCA_FIG_DIR      = os.path.join(PCA_RESULTS_DIR, 'figures')
+pca_dir          = os.path.join(PCA_DATA, f'PCA_b{binsize}_k{kernel_width}')
+os.makedirs(PCA_FIG_DIR, exist_ok=True)
 monkey_dict_file = f'{pca_dir}/allMonkeyDict.p'
 
 with open(monkey_dict_file, 'rb') as f:
@@ -100,7 +110,7 @@ for m_name in monkeys.keys():
                 x + offset, data['diffs'], width,
                 yerr=data['errs'], capsize=3, label=comb
             )
-            cort_ax.bar_label(rects, padding=3, fmt='%.2f', fontsize=6)
+            cort_ax.bar_label(rects, padding=3, fmt='%.2f', fontsize=ANNOT_SMALL)
             multiplier += 1
             cort_ax.axvline(x=multiplier - width, color='grey')
 
@@ -113,9 +123,9 @@ for m_name in monkeys.keys():
         cort_ax.set_xlim([-width, len(cond_combs) - width])
 
     comb_fig.tight_layout()
-    out = f'{pca_dir}/PrincipalAngleDiff_monkey{m_name}_{DIFF_MODE}.png'
-    comb_fig.savefig(out, dpi=300, bbox_inches='tight')
+    out = f'{PCA_FIG_DIR}/PrincipalAngleDiff_monkey{m_name}_{DIFF_MODE}.png'
+    comb_fig.savefig(out, dpi=DPI_DRAFT, bbox_inches='tight')
     plt.close(comb_fig)
     print(f'Saved {out}')
 
-print('\npca_plot_angles.py complete.')
+print('\npca_plot_angles-2.py complete.')

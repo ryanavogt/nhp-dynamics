@@ -24,7 +24,7 @@ import glob
 import csv
 from collections import defaultdict
 
-from config import PROCESSED_DIR
+from OLD.config import PROCESSED_DIR
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--csv', action='store_true', help='Also save CSV')

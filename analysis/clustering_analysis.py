@@ -12,7 +12,8 @@ from scipy.cluster.hierarchy import ward, fcluster
 from scipy.spatial.distance import pdist
 
 from config import (
-    SUMMARY_DIR,
+    CLUSTERING_DIR,
+    POPULATION_DIR,
     EPOCH_WINDOW_MAP_MERGE as epoch_window_map,
     BIN_SIZE             as binsize,
     KERNEL_WIDTH         as kernel_width,
@@ -21,10 +22,15 @@ from config import (
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
+POPULATION_DATA = os.path.join(POPULATION_DIR,  'data')
+CLUSTERING_DATA = os.path.join(CLUSTERING_DIR, 'data')
+CLUSTERING_FIGS = os.path.join(CLUSTERING_DIR, 'figures')
+for _d in [CLUSTERING_DATA, CLUSTERING_FIGS]:
+    os.makedirs(_d, exist_ok=True)
+
 # ---------------------------------------------------------------------------
 # Parameters
 # ---------------------------------------------------------------------------
-summary_dir  = SUMMARY_DIR
 window_range = np.array(WINDOW_RANGE)
 n_clusters   = [2, 3, 4, 5, 6, 7, 8, 9, 10]
 
@@ -32,7 +38,7 @@ n_clusters   = [2, 3, 4, 5, 6, 7, 8, 9, 10]
 # Load SDF dictionary (produced by peak_analysis.py)
 # ---------------------------------------------------------------------------
 all_sdf_filename = (
-    f'{summary_dir}/merged_sdfDict_bin{binsize}_k{kernel_width}_orientMerged.p'
+    f'{POPULATION_DATA}/merged_sdfDict_bin{binsize}_k{kernel_width}_orientMerged.p'
 )
 with open(all_sdf_filename, 'rb') as f:
     all_sdf_dict = pkl.load(f)
@@ -84,11 +90,11 @@ for region in cluster_dict.keys():
 # ---------------------------------------------------------------------------
 # Save outputs
 # ---------------------------------------------------------------------------
-cluster_file_name = f'{summary_dir}/Clusters.p'
+cluster_file_name = f'{CLUSTERING_DATA}/Clusters.p'
 with open(cluster_file_name, 'wb') as f:
     pkl.dump(cluster_dict, f)
 
-wide_sdf_filename = f'{summary_dir}/wide_sdf_dict.p'
+wide_sdf_filename = f'{CLUSTERING_DATA}/wide_sdf_dict.p'
 with open(wide_sdf_filename, 'wb') as f:
     pkl.dump(wide_sdf_dict, f)
 

@@ -34,7 +34,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.stats import gaussian_kde
 
-from config import (
+from OLD.config import (
     MONKEY_NAME_MAP         as monkey_name_map,
     MONKEY_LIST_FORMAT_A    as m_list_a,
     MONKEY_LIST_FORMAT_B    as m_list_b,

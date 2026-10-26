@@ -10,10 +10,12 @@ Loads the Monkey objects produced by pca_compute.py and plots:
       - Each row is a PC; each column is a condition.
       - Figures saved as CoupledPCs_monkey{m}.png and CoupledPCsVelocity_monkey{m}.png
 
-Figures saved under Data/Processed/Summary/PCA_b{b}_k{k}/:
+Figures saved under Results/PCA/figures/:
     Monkey{m}/SDF_{cortex}_monkey{m}.png
     CoupledPCs_monkey{m}.png
     CoupledPCsVelocity_monkey{m}.png
+
+Data loaded from Results/PCA/data/PCA_b{b}_k{k}/.
 """
 
 import sys as _sys, os as _os
@@ -30,18 +32,28 @@ from matplotlib.lines import Line2D
 import seaborn as sns
 
 from utils.sig_proc import velocity
-from pca_utils import cond_neuron_plot, project_sdf, align_sign
+from utils.plot_utils import apply_theme
+from utils.pca_utils import cond_neuron_plot, project_sdf, align_sign
 from config import (
     MONKEY_NAME_MAP        as monkey_name_map,
     EPOCH_WINDOW_MAP_MERGE as epoch_window_map,
     EPOCHS_MERGE           as epochs,
-    SUMMARY_DIR            as summary_dir,
+    PCA_RESULTS_DIR,
     BIN_SIZE               as binsize,
     KERNEL_WIDTH           as kernel_width,
 )
+from plot_config import (
+    DPI_DRAFT,
+    LABEL_SIZE,
+    TICK_SIZE,
+    ANNOT_SIZE,
+    CORTEX_COLORS,
+    apply_rcparams,
+)
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
-sns.set_theme(); sns.set_style(style='white')
+apply_theme()
+apply_rcparams()
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -49,7 +61,10 @@ sns.set_theme(); sns.set_style(style='white')
 N_PCS         = 2   # Number of PC rows in the CoupledPCs grid
 MEAN_NEURONS  = 5   # Top-N neurons to average in the SDF figure
 
-pca_dir          = os.path.join(summary_dir, f'PCA_b{binsize}_k{kernel_width}')
+PCA_DATA         = os.path.join(PCA_RESULTS_DIR, 'data')
+PCA_FIG_DIR      = os.path.join(PCA_RESULTS_DIR, 'figures')
+pca_dir          = os.path.join(PCA_DATA, f'PCA_b{binsize}_k{kernel_width}')
+os.makedirs(PCA_FIG_DIR, exist_ok=True)
 monkey_dict_file = os.path.join(pca_dir, 'allMonkeyDict.p')
 pop_filename     = (f'{pca_dir}/pop_dict_b{binsize}_k{kernel_width}'
                     f'_merged{len(monkey_name_map)}.p')
@@ -64,8 +79,6 @@ print('Loaded.')
 
 cortex_map    = merged_pop_dict['cortex_map']
 condition_map = merged_pop_dict['condition_map']
-
-cort_colors = {'M1': 'tab:blue', 'PMd': 'tab:orange', 'PMv': 'tab:green'}
 
 
 # ---------------------------------------------------------------------------
@@ -95,10 +108,10 @@ for cort_idx, cortex in enumerate(cortex_map.keys()):
             size='xx-large')
         sdf_fig.tight_layout()
 
-        fig_dir = os.path.join(pca_dir, f'Monkey{m_name}')
+        fig_dir = os.path.join(PCA_FIG_DIR, f'Monkey{m_name}')
         os.makedirs(fig_dir, exist_ok=True)
         out = f'{fig_dir}/SDF_{cortex}_monkey{m_name}.png'
-        sdf_fig.savefig(out, dpi=300, bbox_inches='tight')
+        sdf_fig.savefig(out, dpi=DPI_DRAFT, bbox_inches='tight')
         plt.close(sdf_fig)
         print(f'Saved {out}')
 
@@ -144,7 +157,7 @@ for vel_mode in [False, True]:
                     x = np.arange(len(y)) * binsize
                     # Orient so the first meaningful time-point is positive
                     y = align_sign(y, ref_idx=5)
-                    ax.plot(x, y, color=cort_colors[cortex], label=cortex)
+                    ax.plot(x, y, color=CORTEX_COLORS[cortex], label=cortex)
 
                     # Decorate only on the last cortex pass (avoids duplicate lines)
                     if cortex == list(cortex_map.keys())[-1]:
@@ -154,8 +167,8 @@ for vel_mode in [False, True]:
                             ax.axvline(t_start, color='black', alpha=0.5, linewidth=0.8)
                             ax.axvline(t_end,   color='gray',  alpha=0.5, linewidth=0.8)
                         ax.axhline(0, color='black', alpha=0.7, linewidth=0.8)
-                        ax.legend(title='Cortex', fontsize=7)
-                        ax.set_title(f'{condition}, PC {pc + 1}', fontsize=9)
+                        ax.legend(title='Cortex', fontsize=TICK_SIZE)
+                        ax.set_title(f'{condition}, PC {pc + 1}', fontsize=ANNOT_SIZE)
                         ax.set_xlabel('Time (ms)')
                         ax.set_ylabel(f'PC {name}')
 
@@ -163,8 +176,8 @@ for vel_mode in [False, True]:
         pc_fig.suptitle(
             f'First {N_PCS} PCs {label} for each Cortex, Monkey {m_name}')
         pc_fig.tight_layout()
-        out = f'{pca_dir}/CoupledPCs{label}_monkey{m_name}.png'
-        pc_fig.savefig(out, dpi=300, bbox_inches='tight')
+        out = f'{PCA_FIG_DIR}/CoupledPCs{label}_monkey{m_name}.png'
+        pc_fig.savefig(out, dpi=DPI_DRAFT, bbox_inches='tight')
         plt.close(pc_fig)
         print(f'Saved {out}')
 

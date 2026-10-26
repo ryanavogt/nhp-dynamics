@@ -18,7 +18,7 @@ import pickle as pkl
 import numpy as np
 import matplotlib.pyplot as plt
 
-from config import PROCESSED_DIR, EVENT_TIMES_MERGE, EPOCH_WINDOW_MAP_MERGE
+from OLD.config import PROCESSED_DIR, EPOCH_WINDOW_MAP_MERGE
 
 # ── Defaults (edit here for quick runs) ──────────────────────────────────────
 DEFAULTS = dict(monkey='Green', date='2022_03_14', area='M1R', unit=1, channel=None)

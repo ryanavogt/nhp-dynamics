@@ -17,7 +17,7 @@ import pickle as pkl
 import numpy as np
 import matplotlib.pyplot as plt
 
-from config import SUMMARY_DIR, EPOCH_WINDOW_MAP_MERGE, TOTAL_TIME_MERGE
+from OLD.config import SUMMARY_DIR, EPOCH_WINDOW_MAP_MERGE, TOTAL_TIME_MERGE
 
 # ── Load ──────────────────────────────────────────────────────────────────────
 all_monkey_path = os.path.join(SUMMARY_DIR, 'allMonkeyDict.p')

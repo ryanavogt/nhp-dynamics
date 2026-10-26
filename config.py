@@ -21,6 +21,7 @@ SCALE_MONKEYS        = ['R', 'G', 'Y', 'B']
 # ── Signal processing ─────────────────────────────────────────────────────────
 BIN_SIZE     = 5   # ms — width of histogram bins
 KERNEL_WIDTH = 25  # ms — Gaussian kernel width for SDF
+N_DIMS       = 5   # number of principal dimensions for PCA (must match pca_compute.py)
 
 # ── Epoch definitions ─────────────────────────────────────────────────────────
 # Each script uses a different epoch set; all are defined here so there
@@ -35,7 +36,7 @@ EPOCH_WINDOW_MAP = {
     'Grasp Off': {'event': 'trialGraspOff',   'window': [-100,  100]},
 }
 
-# 3-epoch map used by data_process_merge-1.py and all modulation/clustering/plotting scripts.
+# 3-epoch map used by data_process_merge.py and all modulation/clustering/plotting scripts.
 # Grasp window [-100, 300] ms relative to grasp onset.
 EPOCH_WINDOW_MAP_MERGE = {
     'Pre-Cue': {'event': 'trialRewardDrop', 'window': [-300, -100]},
@@ -147,4 +148,12 @@ SORTED_DIR    = os.path.join(DATA_ROOT, 'Sorted_Inactivation')
 MATLAB_DIR    = os.path.join(SORTED_DIR, 'matlabFiles')
 SORTING_DIR   = os.path.join(SORTED_DIR, 'sortingNotes')
 PROCESSED_DIR = os.path.join(DATA_ROOT, 'Processed')
-SUMMARY_DIR   = os.path.join(PROCESSED_DIR, 'Summary')
+SUMMARY_DIR      = os.path.join(PROCESSED_DIR, 'Summary')
+
+RESULTS_DIR      = os.path.join(_ROOT, 'Results')
+POPULATION_DIR   = os.path.join(RESULTS_DIR, 'Population')
+MODULATION_DIR   = os.path.join(RESULTS_DIR, 'Modulation')
+SELECTIVITY_DIR  = os.path.join(RESULTS_DIR, 'Selectivity')
+CLUSTERING_DIR   = os.path.join(RESULTS_DIR, 'Clustering')
+PCA_RESULTS_DIR  = os.path.join(RESULTS_DIR, 'PCA')
+DMD_DIR          = os.path.join(RESULTS_DIR, 'DMD')

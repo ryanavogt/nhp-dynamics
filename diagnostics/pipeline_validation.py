@@ -21,7 +21,7 @@ import glob
 import numpy as np
 from collections import defaultdict
 
-from config import PROCESSED_DIR
+from OLD.config import PROCESSED_DIR
 
 # ── Files expected in every processed session directory ──────────────────────
 REQUIRED_FILES = [

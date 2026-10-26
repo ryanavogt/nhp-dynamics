@@ -15,11 +15,13 @@ Loads the Monkey objects produced by pca_compute.py and plots:
       - Centered region titles via figure coordinates
       - Single shared colorbar for all heatmaps
 
-Figures saved under Data/Processed/Summary/PCA_b{b}_k{k}/:
+Figures saved under Results/PCA/figures/:
     Monkey{m}/PCTraj3D_{cortex}_monkey{m}_PCdims{d}.png
     PCVelocity.png
     Joint_PCTrajectories.png
     Combined_PCTrajectories_All.png
+
+Data loaded from Results/PCA/data/PCA_b{b}_k{k}/.
 """
 
 import sys as _sys, os as _os
@@ -36,37 +38,51 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 from matplotlib.lines import Line2D
 from matplotlib.gridspec import GridSpec
-from pca_utils import project_sdf, project_onto_joint_space
+from utils.pca_utils import project_sdf, project_onto_joint_space
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import seaborn as sns
 from adjustText import adjust_text
 import matplotlib.font_manager as fm
-fm._load_fontmanager(try_read_cache=False)
+# fm._load_fontmanager(try_read_cache=False)
 
 from utils.sig_proc import velocity
+from utils.plot_utils import apply_theme
 from config import (
     MONKEY_NAME_MAP        as monkey_name_map,
     EVENT_MAP_MERGE        as event_map_aligned,
     EVENT_MAP              as event_map,
     EPOCH_WINDOW_MAP_MERGE as epoch_window_map,
     EPOCHS_MERGE           as epochs,
-    SUMMARY_DIR            as summary_dir,
+    PCA_RESULTS_DIR,
     BIN_SIZE               as binsize,
     KERNEL_WIDTH           as kernel_width,
+    N_DIMS,
+)
+from plot_config import (
+    FIGURE_WIDTH,
+    DPI_DRAFT,
+    DPI_FINAL,
+    PANEL_LABEL_SIZE,
+    REGION_TITLE_SIZE,
+    LABEL_SIZE,
+    TICK_SIZE,
+    ANNOT_SIZE,
+    ANNOT_SMALL,
+    apply_rcparams,
 )
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
-sns.set_theme(); sns.set_style(style='white')
-mpl.rcParams['axes.linewidth'] = 0.6   # thinner plot borders globally
-mpl.rcParams['font.family'] = 'Arial'  # clean sans-serif standard for publication
+apply_theme()
+apply_rcparams()
 print(fm.findfont('Arial'))
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-N_DIMS = 5   # Must match pca_compute.py
-
-pca_dir = os.path.join(summary_dir, f'PCA_b{binsize}_k{kernel_width}')
+PCA_DATA    = os.path.join(PCA_RESULTS_DIR, 'data')
+PCA_FIG_DIR = os.path.join(PCA_RESULTS_DIR, 'figures')
+pca_dir     = os.path.join(PCA_DATA, f'PCA_b{binsize}_k{kernel_width}')
+os.makedirs(PCA_FIG_DIR, exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # Load compute outputs
@@ -131,7 +147,7 @@ legend_lines = [Line2D([0], [0], color='tab:blue', lw=4),
                 Line2D([0], [0], color='tab:red',  lw=4)]
 vel_axs[0].legend(legend_lines, ['Mean SDF', 'Velocity'])
 vel_fig.tight_layout()
-vel_fig.savefig(f'{pca_dir}/PCVelocity.png', dpi=300, bbox_inches='tight')
+vel_fig.savefig(f'{PCA_FIG_DIR}/PCVelocity.png', dpi=DPI_DRAFT, bbox_inches='tight')
 plt.close(vel_fig)
 print('Saved PCVelocity.png')
 
@@ -231,7 +247,7 @@ for cort_idx, cortex in enumerate(cortex_map.keys()):
                         x=cj + 0.5, y=ci + 0.5,
                         s=f'{mean_mat[ci, cj]:.3f}\n±{std_mat[ci, cj]:.3f}',
                         color=col, va='center', ha='center',
-                        fontsize=6, bbox=bbox_props,
+                        fontsize=ANNOT_SMALL, bbox=bbox_props,
                     )
             ax_angle.set_yticks(np.arange(n_conds) + .5, [c[:3] for c in cond_list])
             ax_angle.set_xticks(np.arange(n_conds) + .5, [c[:3] for c in cond_list])
@@ -246,10 +262,10 @@ for cort_idx, cortex in enumerate(cortex_map.keys()):
                    loc='upper center', bbox_to_anchor=(.5, -.1))
         fig.tight_layout()
 
-        fig_dir = os.path.join(pca_dir, f'Monkey{m_name}')
+        fig_dir = os.path.join(PCA_FIG_DIR, f'Monkey{m_name}')
         os.makedirs(fig_dir, exist_ok=True)
         out = f'{fig_dir}/PCTraj3D_{cortex}_monkey{m_name}_PCdims{N_DIMS}.png'
-        fig.savefig(out, dpi=300, bbox_inches='tight')
+        fig.savefig(out, dpi=DPI_DRAFT, bbox_inches='tight')
         plt.close(fig)
         print(f'Saved {out}')
 
@@ -300,7 +316,7 @@ for c_idx, cortex in enumerate(cortex_map.keys()):
                 reg_ax.plot(x, y, color=color_map[m_name], alpha=0.5)
 
 pc_fig.tight_layout()
-pc_fig.savefig(f'{pca_dir}/Joint_PCTrajectories.png', dpi=300, bbox_inches='tight')
+pc_fig.savefig(f'{PCA_FIG_DIR}/Joint_PCTrajectories.png', dpi=DPI_DRAFT, bbox_inches='tight')
 plt.close(pc_fig)
 print('Saved Joint_PCTrajectories.png')
 
@@ -315,7 +331,7 @@ print('Saved Joint_PCTrajectories.png')
 # Fixes applied:
 #   1. Region labels centered over each pair via figure-coordinate bbox
 #   2. Trajectory legend placed between rows; condition legend below bottom row
-#   3. Heatmap annotation fontsize = 7
+#   3. Heatmap annotation fontsize = ANNOT_SMALL
 #   4. Single shared colorbar in dedicated narrow 7th column, label Cos(θ₁)
 #   5. Panel labels use GridSpec cell bbox (figure coords) → consistent height
 #      for _i/_ii; _iv label shifted left to avoid crowding heatmap title
@@ -332,7 +348,7 @@ cortex_list = list(cortex_map.keys())
 angle_norm = colors.Normalize(vmin=0.4, vmax=1, clip=True)
 angle_cmap = mpl.colormaps['magma_r']
 
-fig = plt.figure(figsize=(11, 5))
+fig = plt.figure(figsize=(FIGURE_WIDTH, 5))
 
 # 9 columns: [M1_i, M1_ii, SPACE, PMd_i, PMd_ii, SPACE, PMv_i, PMv_ii, cbar]
 # Spacer cols (width 0.05) + wspace=0.25 create larger inter-region gaps;
@@ -397,14 +413,14 @@ for cort_idx, cortex in enumerate(cortex_list):
             x_off = -0.022
             fig.text(cell_bbox.x0 + x_off, cell_bbox.y1 + 0.006,
                      lbl, ha='left', va='bottom',
-                     fontsize=11, fontweight='bold', clip_on=False)
+                     fontsize=PANEL_LABEL_SIZE, fontweight='bold', clip_on=False)
 
     # ── Region title centered above the two top panels ───────────────────────
     region_bbox = gs[0, col_base:col_base + 2].get_position(fig)
     title_x = (region_bbox.x0 + region_bbox.x1) / 2
     title_y = region_bbox.y1 + 0.055
     fig.text(title_x, title_y, cortex,
-             ha='center', va='bottom', fontsize=13, fontweight='bold')
+             ha='center', va='bottom', fontsize=REGION_TITLE_SIZE, fontweight='bold')
 
     # ── Trajectories & event markers ─────────────────────────────────────────
     # Store full (x, y) arrays so we can find each trajectory's point of
@@ -458,12 +474,12 @@ for cort_idx, cortex in enumerate(cortex_list):
     ax_var.scatter(range(1, pcs_plotted + 1),
                    (var_sum / var_sum[-1])[:pcs_plotted],
                    label='All', color='k', s=18)
-    ax_var.set_xlabel('PC index', fontsize=8)
+    ax_var.set_xlabel('PC index', fontsize=LABEL_SIZE)
     ax_var.set_ylim([0, 1.05])
-    ax_var.tick_params(labelsize=7, pad=0)
+    ax_var.tick_params(labelsize=TICK_SIZE, pad=0)
     # Variance Explained ylabel only on leftmost column
     if cort_idx == 0:
-        ax_var.set_ylabel('Variance Explained', fontsize=8)
+        ax_var.set_ylabel('Variance Explained', fontsize=LABEL_SIZE)
     # ── Adaptive line labels on ax2 ──────────────────────────────────────────
     # For each trajectory find the time index where that trajectory passes
     # through its most isolated region — i.e. the point whose minimum distance
@@ -490,7 +506,7 @@ for cort_idx, cortex in enumerate(cortex_list):
         # clip_on=False: text whose box slightly crosses the axes edge still
         # renders fully. adjust_text's ensure_inside_axes keeps anchors within
         # the (now padded) frame, so labels won't wander far outside.
-        t = ax2.text(lx, ly, lbl, fontsize=7, color=lc,
+        t = ax2.text(lx, ly, lbl, fontsize=ANNOT_SMALL, color=lc,
                      fontweight='bold', ha='center', va='center',
                      clip_on=False)
         ax2_texts.append(t)
@@ -510,12 +526,12 @@ for cort_idx, cortex in enumerate(cortex_list):
     )
 
     # ── 2D / 3D axis labels ───────────────────────────────────────────────────
-    ax2.set_xlabel('PC 1', fontsize=8, labelpad=2)
-    ax2.set_ylabel('PC 2', fontsize=8, labelpad=2)
-    ax2.tick_params(labelsize=7, pad=1)
-    ax3.set_xlabel('PC 1', fontsize=7, labelpad=-10)
-    ax3.set_ylabel('PC 2', fontsize=7, labelpad=-10)
-    # ax3.set_zlabel('PC 3', fontsize=7, labelpad=-10)  # omitted — adds clutter
+    ax2.set_xlabel('PC 1', fontsize=LABEL_SIZE, labelpad=2)
+    ax2.set_ylabel('PC 2', fontsize=LABEL_SIZE, labelpad=2)
+    ax2.tick_params(labelsize=TICK_SIZE, pad=1)
+    ax3.set_xlabel('PC 1', fontsize=ANNOT_SMALL, labelpad=-10)
+    ax3.set_ylabel('PC 2', fontsize=ANNOT_SMALL, labelpad=-10)
+    # ax3.set_zlabel('PC 3', fontsize=ANNOT_SMALL, labelpad=-10)  # omitted — adds clutter
 
     # Remove filled panes — clears dead grey/white space around the trajectories
     for axis in [ax3.xaxis, ax3.yaxis, ax3.zaxis]:
@@ -534,7 +550,7 @@ for cort_idx, cortex in enumerate(cortex_list):
 
 
     # 3D tick labels: negative pad pulls numbers flush against the tick marks.
-    ax3.tick_params(labelsize=6, pad=-6)
+    ax3.tick_params(labelsize=ANNOT_SMALL, pad=-6)
 
     # ── Principal angle heatmap — shared cmap/norm, no per-panel colorbar ────
     angle_file = os.path.join(
@@ -553,24 +569,24 @@ for cort_idx, cortex in enumerate(cortex_list):
                     x=cj + 0.5, y=ci + 0.5,
                     s=f'{mean_mat[ci, cj]:.2f}\n±{std_mat[ci, cj]:.2f}',
                     color=col, va='center', ha='center',
-                    fontsize=7, bbox=bbox_props,
+                    fontsize=ANNOT_SMALL, bbox=bbox_props,
                 )
         ax_angle.set_yticks(np.arange(n_conds) + .5,
-                            [c[:3] for c in cond_list], fontsize=7)
+                            [c[:3] for c in cond_list], fontsize=TICK_SIZE)
         ax_angle.set_xticks(np.arange(n_conds) + .5,
-                            [c[:3] for c in cond_list], fontsize=7)
+                            [c[:3] for c in cond_list], fontsize=TICK_SIZE)
         ax_angle.tick_params(axis='both', pad=-1)
         ax_angle.vlines(np.arange(n_conds)[1:], 0, n_conds, colors='w')
         ax_angle.hlines(np.arange(n_conds)[1:], 0, n_conds, colors='w')
         ax_angle.invert_yaxis()
-        ax_angle.set_title('Principal Angles', fontsize=8)
+        ax_angle.set_title('Principal Angles', fontsize=LABEL_SIZE)
 
 # ── Single shared colorbar for all heatmaps ──────────────────────────────────
 sm = mpl.cm.ScalarMappable(cmap=angle_cmap, norm=angle_norm)
 sm.set_array([])
 cbar = fig.colorbar(sm, cax=cbar_ax, orientation='vertical')
-cbar.set_label(r'$\cos(\theta_1)$', fontsize=8)
-cbar.ax.tick_params(labelsize=6, pad=1)
+cbar.set_label(r'$\cos(\theta_1)$', fontsize=LABEL_SIZE)
+cbar.ax.tick_params(labelsize=ANNOT_SMALL, pad=1)
 
 # Reposition colorbar tight against the c_iv heatmap (col_base + 1 = 7 for PMv)
 last_angle_bbox = gs[1, col_base + 1].get_position(fig)
@@ -588,15 +604,15 @@ fig.legend(
     loc='upper center',
     bbox_to_anchor=(_pmd_cell.x0 + _pmd_cell.width / 2, _pmd_cell.y0 + 0.05),
     ncols=2,
-    fontsize=6,
+    fontsize=ANNOT_SMALL,
     frameon=False,
     markerscale=0.9,
     handletextpad=0.4,
     columnspacing=0.8,
 )
 
-combined_path = f'{pca_dir}/Combined_PCTrajectories_All.png'
-fig.savefig(combined_path, dpi=300, bbox_inches='tight')
+combined_path = f'{PCA_FIG_DIR}/Combined_PCTrajectories_All.png'
+fig.savefig(combined_path, dpi=DPI_DRAFT, bbox_inches='tight')
 plt.close(fig)
 print(f'Saved {combined_path}')
 
