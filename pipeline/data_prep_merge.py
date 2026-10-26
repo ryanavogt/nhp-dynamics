@@ -2,202 +2,164 @@ import sys as _sys, os as _os
 _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 del _sys, _os
 
-# The following packages are built-in for python builds
-import pickle as pkl                #Saving/loading data (built-in)
-import os                           #Directory Creation and Verification (built-in)
+import pickle as pkl
+import os
 import glob
 
-# The following packages need to be installed in your virtual environment (using conda or pip)
-import pandas as pd                 #Loading tables
-import scipy.io as sio              #Loading matlab files
+import pandas as pd
+import scipy.io as sio
 import numpy as np
 
-from utils.sig_proc import *
+from utils.sig_proc import trial_splitter
 
+from config import (
+    MONKEY_NAME_MAP       as monkey_name_map,
+    M1_HEMISPHERE_MAP     as m1_hemisphere_map,
+    MONKEY_LIST_FORMAT_A  as m_list_1,
+    MONKEY_LIST_FORMAT_B  as m_list_2,
+    SCALE_MONKEYS         as scale_monkeys,
+    MATLAB_DIR            as matlab_dir,
+    SORTING_DIR           as sorting_dir,
+    PROCESSED_DIR         as processed_dir,
+    EVENTS_MERGE          as event_list,
+    EVENT_THRESHOLDS_PREP as event_thresholds,
+)
 
-m_list_1 = ['Y', 'B']
-m_list_2 = ['R','G']
-scale_monkeys = ['R', 'G', 'Y', 'B'] #Which monkeys have time recorded in seconds
-monkey_names_full = {'G':'Green', 'R':'Red', 'Y':'Yellow', 'B':'Blue'}
-monkey_name_dict = {}
-for monkey in m_list_1+m_list_2:
-    monkey_name_dict[monkey] = monkey_names_full[monkey]
-monkey_M1_hemisphere = {'Green': 'R', 'Red': 'R', 'Blue':'R', 'Yellow':'R'}
+load_override = True
 
-#Define directories of data
-data_dir = 'Data/Sorted_Inactivation'
-matlab_dir = f'{data_dir}/matlabFiles'
-sorting_dir = f'{data_dir}/sortingNotes'
+# ---------------------------------------------------------------------------
+# Identify all sessions from sorting notes
+# ---------------------------------------------------------------------------
+file_list_1, file_list_2 = [], []
+for m1, m2 in zip(m_list_1, m_list_2):
+    file_list_1 += glob.glob(f'{sorting_dir}/*ortingNotes_*{m1}.xlsx')
+    file_list_2 += glob.glob(f'{sorting_dir}/*ortingNotes_*{m2}.xlsx')
 
-#Identify all data sessions
-file_list_1 = []
-file_list_2 = []
-for m1, m2 in zip(m_list_1,m_list_2):
-    file_list_1 += [f for f in glob.glob(f'{sorting_dir}/*ortingNotes_*{m1}.xlsx')]
-    file_list_2 += [f for f in glob.glob(f'{sorting_dir}/*ortingNotes_*{m2}.xlsx')]
-
-for file in file_list_1+file_list_2:
-    file_name = file.split('\\')[-1]
+for file in file_list_1 + file_list_2:
+    file_name  = file.split('\\')[-1]
     _, date_flat, name_label = file_name.split('_')
-    name_label = name_label[0]
-    monkey_name = monkey_name_dict[name_label]
+    name_label  = name_label[0]
+    monkey_name = monkey_name_map[name_label]
     year, month, day = date_flat[0:4], date_flat[4:6], date_flat[6:]
-    date = f'{year}_{month}_{day}'
+    date        = f'{year}_{month}_{day}'
     print(date)
 
-    # Load trial times for the session
-    """
-    Contents:
-    trialNumbers:           Index for trial (clean)             - int
-    originalTrialNumber:    Trial index before cleaning         - int
-    isRightHandUsed:        (error?) Right hand used? T(R)/F(L) - boolean (0/1)
-    handOrien               Orientation of target, hand         - 1:left horizontal, 2:right horizontal, 3:left vertical, 4:right vertical
-    trialStartTimes         Start time of trial                 - int (ms)
-    trialRewardDrop         Time of pellet drop ("Go cue")      - int (ms)
-    trialReachOn            Time monkey starts to reach         - int (ms)
-    trialGraspOn            Time monkey starts grasp            - int (ms)
-    trialGraspOff           Time monkey ends grasp              - int (ms)
-    """
-    rt = sio.loadmat(f'{sorting_dir}/relTrialTimes_{year}{month}{day}_{name_label}.mat')['relTrialTimes'][0,0]
+    # Output directory
+    save_dir = os.path.join(processed_dir, f'Monkey_{monkey_name}', date)
+    os.makedirs(save_dir, exist_ok=True)
 
-    # Split absolute start times by event
-    event_times = rt[-1]
-    events = rt[0][0].split(' | ')
-    event_df = pd.DataFrame(event_times, columns=events)
+    if not load_override and os.path.isfile(os.path.join(save_dir, 'Neurons_U1.p')):
+        print(f'  Skipping {monkey_name} {date} (already processed)')
+        continue
+
+    # ── Load trial event times ──────────────────────────────────────────────
+    rt              = sio.loadmat(
+        f'{sorting_dir}/relTrialTimes_{year}{month}{day}_{name_label}.mat'
+    )['relTrialTimes'][0, 0]
+    mat_event_cols  = rt[-1]
+    mat_event_names = rt[0][0].split(' | ')
+    event_df        = pd.DataFrame(mat_event_cols, columns=mat_event_names)
+
     if file in file_list_1:
-        event_df = event_df.astype({'newTrialNumbers':int})
+        event_df = event_df.astype({'newTrialNumbers': int})
     else:
-        event_df = event_df.astype({'trialNumbers':int})
-    # if monkey_name == 'Red':
-    #     print(event_df)
-    # Load sorting notes for session neuron metadata
-    """
-    Contents:
-    Unit                    Machine unit of collection              - int (1 or 2)
-    Channel                 Channel/electrode                       - int (1 - 128)
-    n cells                 Number of cells identified              - int (0 - 4)
-    Sort code [1, 2, 3, 4]  Quality of neurons identified           - int : 1 Well-isolated, 2: Mixed, 3: Multi-unit
-    Notes                   Notes                                   - str
-    Connector               Array Connector Number                  - int
-    Area                    Region of the brain                     - str (M1, PMd(L or R), PMv(L or R))
-    Hemis                   Hemisphere of brain                     - str (contra or ipsi)
-    """
-    sorting_file = f'{sorting_dir}/SortingNotes_{year}{month}{day}_{name_label}.xlsx'
-    df = pd.read_excel(sorting_file)
+        event_df = event_df.astype({'trialNumbers': int})
 
-    # Sort neurons by region - Assign channel and number of cells per channel to region
+    # ── Load sorting notes (neuron metadata) ────────────────────────────────
+    sorting_file = os.path.join(sorting_dir, f'SortingNotes_{year}{month}{day}_{name_label}.xlsx')
+    df           = pd.read_excel(sorting_file)
+
     neurons = {1: {}, 2: {}}
-    neurons_other = {}
-    sig_nos = {1: [], 2: []}
-    sig_nos_other = []
-
     for unit, channel, cell_no, area in zip(df['Unit'], df['Channel'], df['n cells'], df['Area']):
-        if cell_no>0: #Ignore channels with no neurons
-            sig_no = sig_nos[unit]
-            neurons_temp = neurons[unit]
-            sig_no.append(channel)
+        if cell_no > 0:
             if area == 'M1':
-                area = f'M1{monkey_M1_hemisphere[monkey_name]}'
-            if area in neurons_temp.keys():
-                neurons_temp[area].append((channel, cell_no))
+                area = f'M1{m1_hemisphere_map[monkey_name]}'
+            if area in neurons[unit]:
+                neurons[unit][area].append((channel, cell_no))
             else:
-                neurons_temp[area] = [(channel, cell_no)]
+                neurons[unit][area] = [(channel, cell_no)]
 
-    monkey_save_dir = f'Data/Processed/Monkey_{monkey_name}'
-    if not os.path.isdir(monkey_save_dir):
-        os.mkdir(monkey_save_dir)
+    for unit in [1, 2]:
+        with open(os.path.join(save_dir, f'Neurons_U{unit}.p'), 'wb') as f:
+            pkl.dump(neurons[unit], f)
 
-    save_dir = f'{monkey_save_dir}/{date}'
-    if not os.path.isdir(save_dir):
-        os.mkdir(save_dir)
-
-    for unit in [1,2]:
-        with open(f'{save_dir}/Neurons_U{unit}.p', 'wb') as neuron_file:
-            pkl.dump(neurons[unit], neuron_file)
-
+    # ── Build trial_data ────────────────────────────────────────────────────
     trial_data = {}
     event_durs = {}
-    track_durs = False
+    track_durs = True
+
     if file in file_list_1:
-        # Define time window for each trial
-        trial_data['handOrien'] = (event_df['angle'] + event_df['isRightHandUsed']).astype(int)
-        trial_data['trialStartTimes'] = (event_df['trialbaseline']*1000).astype(int)
-        trial_data['trialRewardDrop'] = (event_df['trialGoCue']*1000).astype(int)- trial_data['trialStartTimes']
-        trial_data['trialGraspOn'] = (event_df['trialGraspOn']*1000).astype(int) - trial_data['trialStartTimes']
-        trial_data['trialEnd'] = (event_df['trialGraspOn']*1000).astype(int) + 800
+        trial_data['handOrien']       = (event_df['angle'] + event_df['isRightHandUsed']).astype(int)
+        trial_data['trialStartTimes'] = (event_df['trialbaseline'] * 1000).astype(int)
+        trial_data['trialRewardDrop'] = (event_df['trialGoCue'] * 1000).astype(int) - trial_data['trialStartTimes']
+        trial_data['trialGraspOn']    = (event_df['trialGraspOn'] * 1000).astype(int) - trial_data['trialStartTimes']
+        trial_data['trialEnd']        = (event_df['trialGraspOn'] * 1000).astype(int) + 800
 
     if file in file_list_2:
         track_durs = True
-        trial_data['handOrien'] = event_df['handOrien']
+        trial_data['handOrien']       = event_df['handOrien']
         trial_data['trialStartTimes'] = event_df['trialStartTimes']
-        trial_data['trialEnd'] = event_df['trialGraspOn'] + 800
-        trial_data['trialGraspOn'] = event_df['trialGraspOn'] - trial_data['trialStartTimes']
-        event_durs['trialGraspOff'] = ((event_df['trialGraspOff']).astype(int) - trial_data['trialGraspOn']
-                                       - trial_data['trialStartTimes'])
-        # trial_data['trialReachOn'] = event_df['trialReachOn'] - trial_data['trialStartTimes']
+        trial_data['trialEnd']        = event_df['trialGraspOn'] + 800
+        trial_data['trialGraspOn']    = event_df['trialGraspOn']    - trial_data['trialStartTimes']
         trial_data['trialRewardDrop'] = event_df['trialRewardDrop'] - trial_data['trialStartTimes']
-        event_durs['trialReachOn'] = ((event_df['trialReachOn']).astype(int) - trial_data['trialRewardDrop']
-                                      - trial_data['trialStartTimes'])
-        # trial_data['trialGraspOff'] = event_df['trialGraspOff'] - trial_data['trialStartTimes']
+        event_durs['trialGraspOff']   = (event_df['trialGraspOff'].astype(int)
+                                         - trial_data['trialGraspOn']
+                                         - trial_data['trialStartTimes'])
+        event_durs['trialReachOn']    = (event_df['trialReachOn'].astype(int)
+                                         - trial_data['trialRewardDrop']
+                                         - trial_data['trialStartTimes'])
+        event_durs['trialGraspOn']    = (trial_data['trialGraspOn']
+                                         - trial_data['trialRewardDrop'])
 
-    with open(f'{save_dir}/trial_data.p', 'wb') as f:
+    with open(os.path.join(save_dir, 'trial_data.p'), 'wb') as f:
         pkl.dump(trial_data, f)
 
-    area_spike_counts = {}
-    area_neuron_counts = {}
-    monkey_dir = f'{matlab_dir}/monk{monkey_name}2024Sorting_SQ'
-    matlab_file_list = [f for f in glob.glob(f'{monkey_dir}/{year}_{month}_{day}*')]
-    for matlab_file_name in matlab_file_list:
+    # ── Split spikes into trials ────────────────────────────────────────────
+    matlab_monkey_dir = os.path.join(matlab_dir, f'monk{monkey_name}2024Sorting_SQ')
+    scaling           = name_label in scale_monkeys
+
+    for matlab_file_name in glob.glob(f'{matlab_monkey_dir}/{year}_{month}_{day}*'):
         unit = int(matlab_file_name.split('.')[0][-1])
         data = sio.loadmat(matlab_file_name)
-        area_spike_counts[unit] = {}
-        area_neuron_counts[unit] = {}
-        if name_label in scale_monkeys:
-            print()
+        area_spike_counts = {}
+
         for area in neurons[unit].keys():
-            area_spike_count = 0
+            rel_spike_times   = {}
             area_neuron_count = 0
-            rel_spike_times = {}
+            area_spike_count  = 0
             for sig, no_neurons in neurons[unit][area]:
-                trial_windows = np.vstack([trial_data['trialStartTimes'], trial_data['trialEnd']]).T
-                scaling = name_label in scale_monkeys
+                trial_windows        = np.vstack([trial_data['trialStartTimes'], trial_data['trialEnd']]).T
                 rel_spike_times[sig] = trial_splitter(data, trial_windows, sig, scaling=scaling)
-                area_neuron_count += no_neurons
-                area_spike_count += rel_spike_times[sig].shape[0]
-            with open(f'{save_dir}/spikeTimes_U{unit}_{area}.p', 'wb') as spike_time_file:
-                pkl.dump(rel_spike_times, spike_time_file)
-            area_spike_counts[unit][area] = area_spike_count
-            area_neuron_counts[unit][area] = area_neuron_count
-            print(f'Area: {area}, Neurons: {area_neuron_count}, Spikes: {area_spike_count}')
-        with open(f'{save_dir}/spikeCounts_U{unit}.p', 'wb') as spike_count_file:
-            pkl.dump(area_spike_counts[unit], spike_count_file)
+                area_neuron_count   += no_neurons
+                area_spike_count    += rel_spike_times[sig].shape[0]
+            with open(os.path.join(save_dir, f'spikeTimes_U{unit}_{area}.p'), 'wb') as f:
+                pkl.dump(rel_spike_times, f)
+            area_spike_counts[area] = area_spike_count
+            print(f'  Area: {area}, Neurons: {area_neuron_count}, Spikes: {area_spike_count}')
 
-        # Record relative event times for each trial
-        event_list = ['trialRewardDrop', 'trialGraspOn']
-        event_thresholds = {'trialRewardDrop':[200, 2000], 'trialGraspOn':[300, 1000]}
-        rel_event_times = {}
-        prev_times = 0
-        event_masks = []
-        full_mask = True
-        for event in event_list:
-            event_times = trial_data[event].values
-            rel_event_times[event] = event_times
-            event_duration = rel_event_times[event] - prev_times
-            event_mask = (event_duration > event_thresholds[event][0])*(event_duration < event_thresholds[event][1])
-            prev_times = rel_event_times[event]
-            event_masks.append(event_mask)
-            full_mask = full_mask*event_mask
+        with open(os.path.join(save_dir, f'spikeCounts_U{unit}.p'), 'wb') as f:
+            pkl.dump(area_spike_counts, f)
 
-        for event in event_list:
-            rel_event_times[event] = rel_event_times[event][full_mask]
-        print(f'Keep Proportion: {full_mask.sum()/full_mask.shape[0]}\n')
-        durs = {}
-        if track_durs:
-            for event in event_durs.keys():
-                durs[event] = event_durs[event][full_mask]
-            with open(f'{save_dir}/eventDurs.p', 'wb') as event_dur_file:
-                pkl.dump(durs, event_dur_file)
-        with open(f'{save_dir}/eventTimes.p', 'wb') as event_time_file:
-            pkl.dump(rel_event_times, event_time_file)
-        with open(f'{save_dir}/eventMasks.p', 'wb') as event_mask_file:
-            pkl.dump(full_mask, event_mask_file)
+    # ── Compute and save trial event mask ───────────────────────────────────
+    full_mask  = np.ones(len(trial_data['trialRewardDrop']), dtype=bool)
+    prev_times = 0
+    for event in event_list:
+        event_times_arr = trial_data[event].values
+        event_duration  = event_times_arr - prev_times
+        if event in event_thresholds:          # skip events with no threshold defined
+            lo, hi      = event_thresholds[event]
+            full_mask  &= (event_duration > lo) & (event_duration < hi)
+        prev_times      = event_times_arr
+
+    rel_event_times = {event: trial_data[event].values[full_mask] for event in event_list}
+    print(f'  Keep proportion: {full_mask.sum() / full_mask.shape[0]:.2f}\n')
+
+    with open(os.path.join(save_dir, 'eventTimes.p'), 'wb') as f:
+        pkl.dump(rel_event_times, f)
+    with open(os.path.join(save_dir, 'eventMasks.p'), 'wb') as f:
+        pkl.dump(full_mask, f)
+
+    if track_durs:
+        durs = {event: event_durs[event][full_mask] for event in event_durs}
+        with open(os.path.join(save_dir, 'eventDurs.p'), 'wb') as f:
+            pkl.dump(durs, f)

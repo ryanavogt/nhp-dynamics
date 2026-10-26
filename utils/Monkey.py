@@ -91,11 +91,14 @@ class Monkey:
         self.cortices[cortex]['sdf'] = {epoch: cortex_sdf}
         return cortex_sdf
 
-    def compute_trial_psth(self, cort_psth, cortex, epoch='Merged'):
+    def compute_trial_psth(self, cort_psth, cortex, condition_order, epoch='Merged'):
         self.check_cortex(cortex)
         cortex_psth = {}
         for (cond, cond_idcs) in self.condition_map[cortex].items():
-            cortex_psth[cond] = cort_psth[cond_idcs[0]:cond_idcs[1]][self.monkey_indices[cortex]]
+            # cortex_psth[cond] = cort_psth[cond_idcs[0]:cond_idcs[1]][self.monkey_indices[cortex]]
+            cond_index = np.where([f'{cond[0]}{cortex}_{cond[2:]}' == c for c in condition_order])[0][0]
+            all_neurons = cort_psth[cond_index]
+            cortex_psth[cond] = [all_neurons[i] for i in self.monkey_indices[cortex]]
         self.cortices[cortex]['psth'] = {epoch: cortex_psth}
         return cortex_psth
 

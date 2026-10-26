@@ -3,6 +3,7 @@ from scipy.stats import norm, t
 import math
 import torch
 import torch.nn.functional as F
+from scipy.stats import ttest_rel, ttest_ind
 
 __all__ = [
     'sig_name',
@@ -13,6 +14,8 @@ __all__ = [
     't_test',
     'center_sdf',
     'velocity',
+    'epoch_trial_rates',
+    'laterality_ttest'
 ]
 
 def sig_name(signal):
@@ -68,7 +71,7 @@ def gen_psth(spiketimes, binsize, window, neurons = 1):
             psth[j+1, 1+neuron] = (temp==(neuron+1)).sum()
     return psth
 
-def trial_psth(spiketimes, trial_idcs, binsize, window, neurons = 1, default_trials = 25):
+def trial_psth(spiketimes, trial_idcs, binsize, window, neurons = 1, trial_nos = None):
     """
     Generate Peristimulus Time Histogram from spike times
     :param spiketimes: Times at which spike occurs (np array), zeroed at event start
@@ -80,11 +83,16 @@ def trial_psth(spiketimes, trial_idcs, binsize, window, neurons = 1, default_tri
     if (window.max() - window.min()) % binsize != 0:
         T += 1
     psth_list = []
+    if trial_nos is not None:
+        trial_range = trial_nos
+    else:
+        trial_range= np.unique(trial_idcs)
     init_idx = 0
     temp_spikes = spiketimes
     times = np.arange(window[0], window[0] + binsize * T + .001, binsize)
     if len(trial_idcs)>0:
-        for idx in np.arange(np.min(trial_idcs), np.min(trial_idcs)+default_trials):
+        # for idx in np.arange(np.min(trial_idcs), np.min(trial_idcs)+no_trials):
+        for idx in trial_range:
             trial_mask = trial_idcs == idx
             trial_spikes = spiketimes[trial_mask]
             psth = np.zeros((T + 1, 1 + neurons))
@@ -99,7 +107,7 @@ def trial_psth(spiketimes, trial_idcs, binsize, window, neurons = 1, default_tri
                     psth[j + 1, 1 + neuron] = (temp == (neuron + 1)).sum()
             psth_list.append(psth[1:,1:].squeeze())
     else:
-        psth_list = [np.zeros_like(times)[1:]]*default_trials
+        psth_list = [np.zeros_like(times)[1:]]*len(trial_range)
     return psth_list
 
 def gen_sdf(psth, ftype, w, bin_size = 1, varargin = None, n_neurons=None, multi_unit = True):
@@ -194,6 +202,56 @@ def t_test(sdf1, sdf2, q=0.025, paired = False, type='two-sided'):
         # modulation[neuron_idx] = (lower_tail < q) or (upper_tail <q)
         modulation[neuron_idx] = sig_level < q
     return modulation, t_vals
+
+
+def epoch_trial_rates(neuron_spikes_by_trial, event_times, epoch_ms, lat_labels, lat):
+    """
+    Compute per-trial mean firing rates for one neuron and one laterality.
+
+    :param neuron_spikes_by_trial: list of spike time arrays (absolute, ms), one per trial
+    :param event_times: array of event onset times (ms), one per trial
+    :param epoch_ms: (start_ms, end_ms) relative to event onset
+    :param lat_labels: array of laterality labels per trial (e.g. 'c' or 'i')
+    :param lat: which laterality to select ('c' or 'i')
+    :return: np.array of firing rates (Hz) for selected trials
+    """
+    epoch_start, epoch_end = epoch_ms
+    epoch_dur_s = (epoch_end - epoch_start) / 1000.0
+    trial_indices = np.where(lat_labels == lat)[0]
+    rates = []
+    for t in trial_indices:
+        spikes = neuron_spikes_by_trial[t]
+        if len(spikes) > 0:
+            aligned = spikes - event_times[t]
+            n = ((aligned >= epoch_start) & (aligned < epoch_end)).sum()
+            rate = n / epoch_dur_s
+        else:
+            rate = 0.0
+        rates.append(rate)
+    return np.array(rates)
+
+
+def laterality_ttest(area_label, neuron_idx, event, epoch_ms,
+                     all_spikes, all_conditions, all_events, event_map):
+    """
+    Paired or unpaired t-test comparing contra vs ipsi firing rates across trials.
+
+    :return: (t_stat, p_val)
+    """
+    lat_labels = all_conditions[area_label][neuron_idx][:, 0]
+    event_times = np.array(all_events[area_label][event_map[event]][neuron_idx])
+    spikes_list = all_spikes[area_label][neuron_idx]
+
+    contra = epoch_trial_rates(spikes_list, event_times, epoch_ms, lat_labels, 'c')
+    ipsi = epoch_trial_rates(spikes_list, event_times, epoch_ms, lat_labels, 'i')
+
+    if len(contra) == len(ipsi) and len(contra) > 1:
+        t, p = ttest_rel(contra, ipsi)
+    elif len(contra) > 1 and len(ipsi) > 1:
+        t, p = ttest_ind(contra, ipsi, equal_var=False)
+    else:
+        t, p = np.nan, np.nan
+    return t, p
 
 def center_sdf(sdf):
     mean = sdf.mean(dim=1, keepdim=True)
