@@ -25,14 +25,12 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 from matplotlib import cm
-import seaborn as sns
 import scipy as sp
 
 from config import (
     POPULATION_DIR,
     SELECTIVITY_DIR,
     MONKEY_NAME_MAP        as monkey_name_map,
-    EPOCH_WINDOW_MAP_MERGE as epoch_window_map,
     EPOCHS_MERGE           as epochs,
     BIN_SIZE               as binsize,
     KERNEL_WIDTH           as kernel_width,
@@ -42,8 +40,7 @@ from plot_config import (
     FIGURE_WIDTH,
     DPI_DRAFT, DPI_FINAL,
     PANEL_LABEL_SIZE, REGION_TITLE_SIZE,
-    LABEL_SIZE, TICK_SIZE,
-    ANNOT_SIZE, ANNOT_SMALL,
+    LABEL_SIZE, ANNOT_SIZE, ANNOT_SMALL,
     apply_rcparams,
 )
 
@@ -122,7 +119,7 @@ global_norm = mpl.colors.LogNorm(
     vmax=float(np.nanmax(all_tr)),
 )
 
-joint_fig   = plt.figure(figsize=(11, 8.5), layout='constrained')
+joint_fig   = plt.figure(figsize=(FIGURE_WIDTH, 8.5), layout='constrained')
 outer_cols  = joint_fig.subfigures(1, 4, width_ratios=[1, 1, 1, 0.08], wspace=0.03)
 cbar_subfig = outer_cols[3]
 anova_axes  = {}
@@ -152,8 +149,8 @@ for reg_idx, region in enumerate(regions):
     ymed = np.nanmean(orientation_score)
     t_hemi, p_hemi = sp.stats.ttest_1samp(hemisphere_score, popmean=0, nan_policy='omit')
     t_ori,  p_ori  = sp.stats.ttest_1samp(orientation_score, popmean=0, nan_policy='omit')
-    print(f'{region}: Hand: Mean = {hemisphere_score.mean():.3f} p = {p_hemi:.3f}, '
-          f'Orient: Mean = {orientation_score.mean():.3f} p = {p_ori:.3f}')
+    print(f'{region}: Hand: t = {t_hemi:.3f}, Mean = {hemisphere_score.mean():.3f}, p = {p_hemi:.3f}, '
+          f'Orient: t = {t_ori:.3f}, Mean = {orientation_score.mean():.3f}, p = {p_ori:.3f}')
     arrow_color_hem = 'black' if p_hemi < 0.01 else 'gray'
     arrow_color_ori = 'black' if p_ori  < 0.01 else 'gray'
     _, top_histx    = axs['histx'].get_ylim()
@@ -168,6 +165,7 @@ for reg_idx, region in enumerate(regions):
     ax.set_xlabel('Hand Score (C - I)')
     ax.set_xlim([-1.03, 1.03])
     ax.set_ylim([-1.03, 1.03])
+    ax.set_yticks([-1, -0.5, 0, 0.5, 1])
     outer_cols[reg_idx].text(
         0.5, 1.01, region,
         transform=outer_cols[reg_idx].transSubfigure,
@@ -191,7 +189,7 @@ for reg_idx, region in enumerate(regions):
     ax_cum.set_xlabel('abs Hand and Orient Index')
     ax_cum.set_xlim([0, 1])
     ax_cum.set_ylim([0, 1])
-    ax_cum.legend()
+    ax_cum.legend(fontsize=ANNOT_SIZE)
     if reg_idx == 0:
         _subfig_panel_label(column[1], 'B')
 
@@ -206,8 +204,8 @@ cbar = cbar_subfig.colorbar(
     cax=cax,
 )
 cbar.ax.yaxis.set_major_locator(mpl.ticker.LogLocator(base=10, numticks=5))
-cbar.ax.tick_params(labelsize=8)
-cbar.set_label('Mean firing rate (spikes/s)')
+cbar.ax.tick_params(labelsize=ANNOT_SMALL)
+cbar.set_label('Mean firing rate (spikes/s)', fontsize=LABEL_SIZE)
 
 # ── ANOVA bar chart row ────────────────────────────────────────────────────
 ANOVA_COLORS  = ['tab:blue', 'tab:red', 'tab:gray']
@@ -223,6 +221,18 @@ for region in regions:
     for epoch in epochs:
         anova_sig_rates[region][epoch] = anova_significance[region][epoch].mean(axis=0)
 
+# ── Print exact proportions for manuscript reporting ──────────────────────────
+print('\nANOVA proportions (prop. sig. neurons):')
+for region in regions:
+    n = n_neurons[region]
+    print(f'  {region} (n={n}):')
+    for epoch in EPOCH_LIST:
+        props  = anova_sig_rates[region][epoch]
+        counts = [round(p * n) for p in props]
+        print(f'    {epoch:6s}: Hand = {props[0]:.3f} ({counts[0]}/{n}), '
+              f'Orient = {props[1]:.3f} ({counts[1]}/{n}), '
+              f'Interaction = {props[2]:.3f} ({counts[2]}/{n})')
+
 for reg_idx, region in enumerate(regions):
     ax_an = anova_axes[region].subplots(1)
     for fi, (effect, color, label) in enumerate(
@@ -235,10 +245,11 @@ for reg_idx, region in enumerate(regions):
     ax_an.axhline(0, color='#c3c2b7', lw=1)
     ax_an.tick_params(axis='y')
     ax_an.text(0.98, 0.97, f'n = {n_neurons[region]}',
-               transform=ax_an.transAxes, ha='right', va='top')
+               transform=ax_an.transAxes, ha='right', va='top',
+               fontsize=ANNOT_SIZE + 2)
     if reg_idx == 0:
         ax_an.set_ylabel('Prop. sig. neurons')
-        ax_an.legend(fontsize=10, frameon=False, loc='upper left',
+        ax_an.legend(fontsize=ANNOT_SIZE, frameon=False, loc='upper left',
                      handlelength=1, handleheight=0.8)
         _subfig_panel_label(col_subfigs['M1'][2], 'C')
     else:
@@ -248,7 +259,7 @@ for reg_idx, region in enumerate(regions):
 out2 = os.path.join(
     SELECTIVITY_FIGS,
     f'neuronSelection_merged{n_monkeys}_bin{binsize}_k{kernel_width}_joint.png')
-joint_fig.savefig(out2, bbox_inches='tight', dpi=DPI_DRAFT)
+joint_fig.savefig(out2, bbox_inches='tight', dpi=DPI_FINAL)
 plt.close(joint_fig)
 print(f'Saved {out2}')
 

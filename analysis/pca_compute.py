@@ -31,18 +31,15 @@ import pickle as pkl
 import numpy as np
 import torch
 
-from utils.sig_proc import gen_sdf, center_sdf
 from utils.Monkey import Monkey
 from utils.pca_utils import compute_subspace
 
 from config import (
     MONKEY_NAME_MAP  as monkey_name_map,
     EPOCH_WINDOW_MAP_MERGE as epoch_window_map,
-    EPOCHS_MERGE     as epochs,
     TOTAL_TIME_MERGE as total_time,
     POPULATION_DIR,
     PCA_RESULTS_DIR,
-    LAT_MAP          as lat_map,
     BIN_SIZE         as binsize,
     KERNEL_WIDTH     as kernel_width,
 )
@@ -55,7 +52,7 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 N_SUBSETS      = 5      # Number of random trial subsamples
 TRIAL_FRACTION = 0.80   # Fraction of each condition's trials per subset
 N_DIMS         = 5      # Subspace dimensionality for principal angles
-NEW_POPDICT    = False  # Set True to rebuild the population SDF dict from scratch
+NEW_POPDICT    = True   # Set True to rebuild the population SDF dict from scratch
 PCA_OVERWRITE  = True   # Set True to rerun SVD even if a saved PCA file exists
 
 all_x = np.arange(0, total_time, binsize)
@@ -347,7 +344,7 @@ print(f'\nMonkey dict saved → {monkey_dict_file}')
 # where λ_j = S_j² are the eigenvalues of the first 3 PCs and V_ij is
 # neuron i's loading on PC j from the merged ('All') monkey SVD.
 # Neurons are sorted by w_i descending; the resulting index array is used
-# by rasters_classes.py and pca_plot_neurons.py.
+# by plot_rasters_classes.py and pca_plot_neurons.py.
 #
 # Output: pcIndicesJoint_merged{n}.p
 # ---------------------------------------------------------------------------

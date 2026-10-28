@@ -8,17 +8,17 @@ import matplotlib as mpl
 
 # Import shared constants from central config — re-exported under the original names
 # so that existing callers (`from plot_utils import epoch_window_map`) still work.
-from OLD.config import (
+from config import (
     EPOCH_WINDOW_MAP as epoch_window_map,
     EVENT_TIMES as event_times,
     TOTAL_TIME as current_time,
 )
 
 
-def apply_theme():
+def apply_theme(ticks=True):
     """Apply seaborn theme.  Call once at the start of a script, not on import."""
     sns.set_theme()
-    sns.set_style(style='white')
+    sns.set_style(style='ticks' if ticks else 'white')
 
 def pc_subplot(pca, axs, i, region='', plot_signals=1, window=[0], binsize=5, n_plot =4, projection = True,
                event_times=event_times):

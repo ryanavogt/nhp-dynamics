@@ -1,5 +1,5 @@
 """
-rasters_classes.py — Raster plots for top PC-loading neurons with cluster labels.
+plot_rasters_classes.py — Raster plots for top PC-loading neurons with cluster labels.
 
 Reads modulation data, cluster assignments, and spike lists, then plots raster/SDF
 figures for the neurons with the highest PC loadings in each region.
@@ -226,4 +226,4 @@ scatter_fig.savefig(scatter_out, bbox_inches='tight', dpi=DPI_DRAFT)
 plt.close(scatter_fig)
 print(f'Saved {scatter_out}')
 
-print('\nrasters_classes.py complete.')
+print('\nplot_rasters_classes.py complete.')

@@ -26,12 +26,8 @@ del _sys, _os
 import os
 import pickle as pkl
 import numpy as np
-import torch
 import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
-import seaborn as sns
 
-from utils.sig_proc import velocity
 from utils.plot_utils import apply_theme
 from utils.pca_utils import cond_neuron_plot, project_sdf, align_sign
 from config import (
