@@ -25,7 +25,6 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib as mpl
-import seaborn as sns
 from pandas.plotting import table
 
 from config import (
@@ -42,8 +41,6 @@ from plot_config import (
     FIGURE_WIDTH,
     DPI_DRAFT, DPI_FINAL,
     PANEL_LABEL_SIZE, REGION_TITLE_SIZE,
-    LABEL_SIZE, TICK_SIZE,
-    ANNOT_SIZE, ANNOT_SMALL,
     apply_rcparams,
 )
 
@@ -133,7 +130,7 @@ ax.set_yticks([])
 table(ax, neuron_df, loc='center')
 plt.title('Monkey Region Neurons')
 out1 = os.path.join(POPULATION_FIGS, 'monkeyNeurons.png')
-plt.savefig(out1, dpi=DPI_DRAFT, bbox_inches='tight')
+plt.savefig(out1, dpi=DPI_FINAL, bbox_inches='tight')
 plt.close(neuron_fig)
 print(f'Saved {out1}')
 
@@ -157,7 +154,7 @@ bar_max4 = max(
 )
 bar_ylim4 = bar_max4 * 1.3
 
-fig4      = plt.figure(figsize=(11, 6), layout='constrained')
+fig4      = plt.figure(figsize=(FIGURE_WIDTH, 5), layout='constrained')
 fig4_cols = fig4.subfigures(1, 3, wspace=0.06)
 
 for reg_idx, region in enumerate(regions):
@@ -240,7 +237,7 @@ for reg_idx, region in enumerate(regions):
         _subfig_panel_label(sf_heat4, 'B')
 
 out4 = os.path.join(POPULATION_FIGS, f'EpochMaxFiring_merged{n_monkeys}.png')
-fig4.savefig(out4, bbox_inches='tight', dpi=DPI_DRAFT)
+fig4.savefig(out4, bbox_inches='tight', dpi=DPI_FINAL)
 plt.close(fig4)
 print(f'Saved {out4}')
 

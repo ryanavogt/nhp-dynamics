@@ -180,10 +180,10 @@ for region_key in all_sdf_dict.keys():   # 'cM1', 'iM1', 'cPMd', ...
 
             n_b, n_e = len(baseline_rates), len(event_rates)
             if n_b == n_e and n_b > 1:
-                t_stats[neuron_idx], p_vals[neuron_idx] = ttest_rel(baseline_rates, event_rates)
+                t_stats[neuron_idx], p_vals[neuron_idx] = ttest_rel(event_rates, baseline_rates)
             elif n_b > 1 and n_e > 1:
                 t_stats[neuron_idx], p_vals[neuron_idx] = ttest_ind(
-                    baseline_rates, event_rates, equal_var=False)
+                    event_rates, baseline_rates, equal_var=False)
 
         valid  = ~np.isnan(p_vals)
         reject = np.zeros(n_neurons, dtype=bool)

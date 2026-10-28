@@ -7,14 +7,7 @@ import os                           #Directory Creation and Verification (built-
 
 # The following packages need to be installed in your virtual environment (using conda or pip)
 import matplotlib.pyplot as plt     #Generating plots
-import matplotlib as mpl
-from matplotlib.lines import Line2D
 import numpy as np
-from mpl_toolkits.mplot3d.axes3d import get_test_data
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-import matplotlib.colors as colors
-from utils.plot_utils import pc_subplot
-from utils.Monkey import Monkey
 from DSA.simdist import SimilarityTransformDist
 from matplotlib.patches import Rectangle
 

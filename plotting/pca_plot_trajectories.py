@@ -40,7 +40,6 @@ from matplotlib.lines import Line2D
 from matplotlib.gridspec import GridSpec
 from utils.pca_utils import project_sdf, project_onto_joint_space
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-import seaborn as sns
 from adjustText import adjust_text
 import matplotlib.font_manager as fm
 # fm._load_fontmanager(try_read_cache=False)
@@ -60,13 +59,11 @@ from config import (
 )
 from plot_config import (
     FIGURE_WIDTH,
-    DPI_DRAFT,
-    DPI_FINAL,
+    DPI_DRAFT, DPI_FINAL,
     PANEL_LABEL_SIZE,
     REGION_TITLE_SIZE,
     LABEL_SIZE,
     TICK_SIZE,
-    ANNOT_SIZE,
     ANNOT_SMALL,
     apply_rcparams,
 )
@@ -316,7 +313,7 @@ for c_idx, cortex in enumerate(cortex_map.keys()):
                 reg_ax.plot(x, y, color=color_map[m_name], alpha=0.5)
 
 pc_fig.tight_layout()
-pc_fig.savefig(f'{PCA_FIG_DIR}/Joint_PCTrajectories.png', dpi=DPI_DRAFT, bbox_inches='tight')
+pc_fig.savefig(f'{PCA_FIG_DIR}/Joint_PCTrajectories.png', dpi=DPI_FINAL, bbox_inches='tight')
 plt.close(pc_fig)
 print('Saved Joint_PCTrajectories.png')
 
@@ -337,7 +334,7 @@ print('Saved Joint_PCTrajectories.png')
 #      for _i/_ii; _iv label shifted left to avoid crowding heatmap title
 #   6. All fonts reduced by 1 pt
 # ---------------------------------------------------------------------------
-REGION_LABELS  = ['a', 'b', 'c']              # letter prefix per cortex
+REGION_LABELS  = ['A', 'B', 'C']              # letter prefix per cortex
 PANEL_SUBLABEL = [['i', 'ii'], ['iii', 'iv']] # [row][col within region]
 
 m_name     = 'All'
@@ -575,7 +572,7 @@ for cort_idx, cortex in enumerate(cortex_list):
                             [c[:3] for c in cond_list], fontsize=TICK_SIZE)
         ax_angle.set_xticks(np.arange(n_conds) + .5,
                             [c[:3] for c in cond_list], fontsize=TICK_SIZE)
-        ax_angle.tick_params(axis='both', pad=-1)
+        ax_angle.tick_params(axis='both', pad=1, length=0)
         ax_angle.vlines(np.arange(n_conds)[1:], 0, n_conds, colors='w')
         ax_angle.hlines(np.arange(n_conds)[1:], 0, n_conds, colors='w')
         ax_angle.invert_yaxis()

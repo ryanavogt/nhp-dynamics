@@ -24,22 +24,18 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 from matplotlib.patches import Patch
-import seaborn as sns
 
 from config import (
     MODULATION_DIR,
     MONKEY_NAME_MAP        as monkey_name_map,
     EPOCH_WINDOW_MAP_MERGE as epoch_window_map,
-    EPOCHS_MERGE           as epochs,
     MOD_COLOR_MAP          as mod_color_map,
 )
 from utils.plot_utils import scale_lightness, apply_theme
 from plot_config import (
     FIGURE_WIDTH,
-    DPI_DRAFT, DPI_FINAL,
+    DPI_FINAL,
     PANEL_LABEL_SIZE, REGION_TITLE_SIZE,
-    LABEL_SIZE, TICK_SIZE,
-    ANNOT_SIZE, ANNOT_SMALL,
     apply_rcparams,
 )
 
@@ -92,7 +88,7 @@ layout = [
     ['main_M1', 'main_M1', 'main_PMd', 'main_PMd', 'main_PMv', 'main_PMv'],
     ['M1_pie_Cue', 'M1_pie_Grasp', 'PMd_pie_Cue', 'PMd_pie_Grasp', 'PMv_pie_Cue', 'PMv_pie_Grasp'],
 ]
-f, axs = plt.subplot_mosaic(layout, figsize=(11, 4), sharey=False,
+f, axs = plt.subplot_mosaic(layout, figsize=(FIGURE_WIDTH, 4), sharey=False,
                             gridspec_kw={'height_ratios': [1, 1.8]})
 
 width_main   = 0.2
@@ -156,13 +152,31 @@ for region in hand_use_mod.keys():
             multiplier += 1
 
     ax.set_ylim([0, max_height])
-    ax.set_title(f'{region}', fontsize=REGION_TITLE_SIZE, fontweight='bold')
-    ax.set_xticks(
-        x + step * multiplier / 2,
-        [e.split(' ')[0] for e in list(epoch_window_map.keys())[1:]],
-    )
+    ax.set_title(f'{region}', fontsize=REGION_TITLE_SIZE, fontweight='bold', pad=15)
+    # ax.set_xticks(
+    #     x + step * multiplier / 2,
+    #     [e.split(' ')[0] for e in list(epoch_window_map.keys())[1:]],
+    # )
+    ax.set_ticks([])
     if region != 'M1':
         ax.set_yticks([])
+
+epoch_names   = [e.split(' ')[0] for e in list(epoch_window_map.keys())[1:]]
+n_bar_types   = len(ud_bar_types)
+cluster_width = step * (n_bar_types - 1) + width_main
+for region in hand_use_mod.keys():
+    ax = axs[f'main_{region}']
+    for e_i, epoch_name in enumerate(epoch_names):
+        ax.text(
+            x[e_i] + cluster_width / 2,
+            max_height * 0.98,
+            epoch_name,
+            ha='center', va='bottom',
+            fontsize=REGION_TITLE_SIZE,
+            color='gray',
+            transform=ax.transData,
+            clip_on=False,
+        )
 
 handles, labels = ax.get_legend_handles_labels()
 axs['main_PMd'].legend(handles, labels, loc='upper center',
@@ -212,7 +226,7 @@ for region in hand_use_mod.keys():
             counts.flatten(), radius=1 - size, colors=inner_colors, startangle=90,
             wedgeprops=dict(width=size, edgecolor='w'),
         )
-        pie_ax.set_title(f'{epoch}', va='center')
+        # pie_ax.set_title(f'{epoch}', va='center')
 
 axs['main_M1'].set_ylabel('Modulated neurons (%)')
 
@@ -236,7 +250,7 @@ f.text(_x_label, _pos_A.y1 + 0.04,
        r'$\mathbf{A}$',
        fontsize=PANEL_LABEL_SIZE, fontweight='bold',
        ha='left', va='bottom', clip_on=False)
-f.text(_x_label, _pos_B.y1 + 0.01,
+f.text(_x_label, _pos_B.y1 - 0.05,
        r'$\mathbf{B}$',
        fontsize=PANEL_LABEL_SIZE, fontweight='bold',
        ha='left', va='bottom', clip_on=False)
