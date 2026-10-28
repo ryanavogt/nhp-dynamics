@@ -1,0 +1,10 @@
+name: NHP_Data_Analysis
+channels:
+  - defaults
+dependencies:
+  - pip
+  - matplotlib
+  - scipy
+  - pandas
+  - seaborn
+prefix: C:\Users\14252\.conda\envs\NHP_Data_Analysis
