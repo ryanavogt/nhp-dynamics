@@ -1,0 +1,265 @@
+import numpy as np
+from scipy.stats import norm, t
+import math
+import torch
+import torch.nn.functional as F
+from scipy.stats import ttest_rel, ttest_ind
+
+__all__ = [
+    'sig_name',
+    'trial_splitter',
+    'gen_psth',
+    'trial_psth',
+    'gen_sdf',
+    't_test',
+    'center_sdf',
+    'velocity',
+    'epoch_trial_rates',
+    'laterality_ttest'
+]
+
+def sig_name(signal):
+    if signal < 10:
+        return f'sig0{signal}'
+    else:
+        return f'sig{signal}'
+
+def trial_splitter(data, trial_windows, signal_no, scaling = True):
+    """
+    Converts absolute spike times to relative spike times within trials
+    :param data: Full data dict, with channel no.s as keys - each channel includes absolute spike times (in ms)- Col. 2
+    :param trial_windows: Absolute trial start and end times (in s) - numpy array (#trials, 2)
+    :param signal_no: Channel number - int
+    :return: Spike times relative to start of trial (in ms)
+    """
+
+    d = data[sig_name(int(signal_no))][:, 1:4]#.astype(np.uint16)
+    if d.shape[0]>0 and scaling:
+        d[:, 1] = (d[:, 1] * 1000)
+    rel_trial_data = d.astype(np.uint16)
+    rel_trial_data[:, -1] = 0
+
+    trial_no = 1
+    for trial_start, trial_end in trial_windows:
+        trial_mask = (d[:, 1] > trial_start) & (d[:, 1] < trial_end)
+        rel_trial_data[trial_mask, 1] = d[trial_mask, 1] - trial_start
+        rel_trial_data[trial_mask, -1] = trial_no
+        trial_no += 1
+    keep_index = rel_trial_data[:, -1]>0
+    return rel_trial_data[keep_index]
+
+def gen_psth(spiketimes, binsize, window, neurons = 1):
+    """
+    Generate Peristimulus Time Histogram from spike times
+    :param spiketimes: Times at which spike occurs (np array), zeroed at event start
+    :param binsize: Time width of bins (in ms) - Usually 1
+    :param window: Time steps for histogram (np array) - usually -1000:1000, step size 1
+    :return: PSTH
+    """
+    T = int((window.max() - window.min())/binsize)
+    if (window.max() - window.min())%binsize != 0:
+        T += 1
+    psth = np.zeros((T+1, 1+neurons))
+    psth[:, 0] = np.arange(window[0], window[0]+binsize*T+.001, binsize)
+    spxtimes = np.sort(spiketimes[:, 1])
+    spxcounts = spiketimes[:, 0]
+
+    for j in range(int(T)):
+        temp = spxcounts[np.logical_and((window[0] + binsize * j) <= spxtimes,
+                                        spxtimes < (window[0] + binsize * (j + 1)))]
+        for neuron in range(neurons):
+            psth[j+1, 1+neuron] = (temp==(neuron+1)).sum()
+    return psth
+
+def trial_psth(spiketimes, trial_idcs, binsize, window, neurons = 1, trial_nos = None):
+    """
+    Generate Peristimulus Time Histogram from spike times
+    :param spiketimes: Times at which spike occurs (np array), zeroed at event start
+    :param binsize: Time width of bins (in ms) - Usually 1
+    :param window: Time steps for histogram (np array) - usually -1000:1000, step size 1
+    :return: list separate PSTHs for each trial
+    """
+    T = int((window.max() - window.min()) / binsize)
+    if (window.max() - window.min()) % binsize != 0:
+        T += 1
+    psth_list = []
+    if trial_nos is not None:
+        trial_range = trial_nos
+    else:
+        trial_range= np.unique(trial_idcs)
+    init_idx = 0
+    temp_spikes = spiketimes
+    times = np.arange(window[0], window[0] + binsize * T + .001, binsize)
+    if len(trial_idcs)>0:
+        # for idx in np.arange(np.min(trial_idcs), np.min(trial_idcs)+no_trials):
+        for idx in trial_range:
+            trial_mask = trial_idcs == idx
+            trial_spikes = spiketimes[trial_mask]
+            psth = np.zeros((T + 1, 1 + neurons))
+            psth[:, 0] = times
+            spxtimes = np.sort(trial_spikes[:, 1])
+            spxcounts = trial_spikes[:, 0]
+
+            for j in range(int(T)):
+                temp = spxcounts[np.logical_and((window[0] + binsize * j) <= spxtimes,
+                                                spxtimes < (window[0] + binsize * (j + 1)))]
+                for neuron in range(neurons):
+                    psth[j + 1, 1 + neuron] = (temp == (neuron + 1)).sum()
+            psth_list.append(psth[1:,1:].squeeze())
+    else:
+        psth_list = [np.zeros_like(times)[1:]]*len(trial_range)
+    return psth_list
+
+def gen_sdf(psth, ftype, w, bin_size = 1, varargin = None, n_neurons=None, multi_unit = True):
+    """
+    Generate Spike Density Function by convolving the spike time histogram with a convolution function
+    :param psth: Peristimulus Time Histogram (from psth function)
+    :param ftype: Kernel Function; ['boxcar', 'Gauss', 'exp'] (typically Gauss)
+    :param w: kernel width (usually 1ms)
+    :param varargin: if there is another input (ignore)
+    :return: sdf
+    """
+    f_map ={ # Options for kernel type
+        'boxcar': _boxcar,
+        'Gauss': _gauss,
+        'exp': _exp,
+        'gpfa': _gpfa,
+    }
+    if multi_unit:
+        sdf = psth
+        sdf = torch.Tensor(sdf).unsqueeze(1)
+    else:
+        sdf = psth[:, -1]
+        sdf = torch.Tensor(sdf).unsqueeze(-1).unsqueeze(-1)
+    sdf, kernel = f_map[ftype](sdf.transpose(0, -1), w, bin_size)
+    return sdf, kernel
+
+def _gauss(sdf, w, bin_size=1):
+    gauss_width = max([11, 6*w+1])
+    kernel = norm.pdf(np.arange(math.floor(-gauss_width/2), math.floor(gauss_width/2)+.01, step=bin_size), loc=0, scale=w)
+    kernel_tensor = torch.Tensor(kernel).unsqueeze(0).unsqueeze(0)
+    # sdf = F.conv1d(torch.Tensor(sdf.T).unsqueeze(1), weight=kernel_tensor, padding = 'same')
+    sdf = F.conv1d(sdf, weight=kernel_tensor, padding = 'same')
+    # sdf = np.convolve(sdf, kernel, 'same')
+    max_pos = np.argmax(kernel)
+    sdf = sdf.detach().cpu().numpy()
+    temp = np.arange(start = -max_pos+1, stop = kernel.size-max_pos +.01, step = 1)
+    kernel = np.vstack([temp, kernel])
+
+    return sdf, kernel
+
+def _boxcar(sdf, w):
+    if ~(w % 2):
+        w += 1
+    kernel = np.ones((w, 1))/w
+    sdf = np.convolve(sdf, kernel, 'same')
+    maxpos = np.argmax(kernel)
+    kernel = np.arange(start =-(w-1)/2, stop = (w-1)/2, step = 1)
+
+    return sdf, kernel
+
+def _exp(sdf, w):
+    filtbase = np.arange(1, np.min([3000, 5*w]))
+    filtfunc = np.exp(-filtbase/w)
+    kernel   = filtfunc/np.sum(filtfunc)
+    result = np.convolve(sdf.squeeze(), kernel, 'same')  # fixed: np.conv → np.convolve
+    max_pos = np.argmax(kernel)
+    temp = np.arange(start=-max_pos + 1, stop=kernel.size - max_pos + .01, step=1)
+    kernel = np.vstack([temp, kernel])
+    return result, kernel
+
+def _gpfa(sdf, w, bin_size, s_n2=1e-3, tau=1):
+    raise NotImplementedError(
+        "GPFA kernel is not yet implemented. Use ftype='Gauss' or 'boxcar' instead."
+    )
+
+def t_test(sdf1, sdf2, q=0.025, paired = False, type='two-sided'):
+    if type not in ['two-sided', 'greater', 'less']:
+        print(f'Invalid T-test type: {type}, expected [two-sided, greater, less]')
+    n1, n2 = sdf1.shape[1], sdf2.shape[1]
+    m1, m2 = np.mean(sdf1, axis=1), np.mean(sdf2, axis=1)
+    s1, s2 = np.std(sdf1, axis=1),  np.std(sdf2, axis=1)
+    if paired:
+        s_pop = np.sqrt(((n1-1)*s1**2 + (n2-1)*s2**2)/(n1+n2-2))
+        s_mean = s_pop*np.sqrt(1/n1+1/n2)
+        t_vals = (m2-m1)/s_mean
+        df = np.ones_like(m1)*(n1+n2-2)
+    else:
+        v1, v2 = s1**2/n1, s2**2/n2
+        # if v1.min()==0 or v2.min() ==0:
+        #     print(f'V1 min: {v1.min()}, V2 min:{v2.min()}')
+        t_vals = (m2-m1)/np.sqrt(v1 + v2)
+        df = (v1+v2)**2/(1/(n1-1) *v1**2 + 1/(n2-1)*v2**2)
+    modulation = np.zeros(len(m1), dtype=bool)
+    for neuron_idx in range(len(m1)):
+        # lower_tail = t.cdf(t_vals[neuron_idx], df[neuron_idx])
+        if type == 'two-sided':
+            sig_level = t.sf(abs(t_vals[neuron_idx]), df[neuron_idx])
+        if type == 'greater':
+            sig_level = t.sf(t_vals[neuron_idx], df[neuron_idx])
+        if type == 'less':
+            sig_level = t.sf(-t_vals[neuron_idx], df[neuron_idx])
+        # modulation[neuron_idx] = (lower_tail < q) or (upper_tail <q)
+        modulation[neuron_idx] = sig_level < q
+    return modulation, t_vals
+
+
+def epoch_trial_rates(neuron_spikes_by_trial, event_times, epoch_ms, lat_labels, lat):
+    """
+    Compute per-trial mean firing rates for one neuron and one laterality.
+
+    :param neuron_spikes_by_trial: list of spike time arrays (absolute, ms), one per trial
+    :param event_times: array of event onset times (ms), one per trial
+    :param epoch_ms: (start_ms, end_ms) relative to event onset
+    :param lat_labels: array of laterality labels per trial (e.g. 'c' or 'i')
+    :param lat: which laterality to select ('c' or 'i')
+    :return: np.array of firing rates (Hz) for selected trials
+    """
+    epoch_start, epoch_end = epoch_ms
+    epoch_dur_s = (epoch_end - epoch_start) / 1000.0
+    trial_indices = np.where(lat_labels == lat)[0]
+    rates = []
+    for t in trial_indices:
+        spikes = neuron_spikes_by_trial[t]
+        if len(spikes) > 0:
+            aligned = spikes - event_times[t]
+            n = ((aligned >= epoch_start) & (aligned < epoch_end)).sum()
+            rate = n / epoch_dur_s
+        else:
+            rate = 0.0
+        rates.append(rate)
+    return np.array(rates)
+
+
+def laterality_ttest(area_label, neuron_idx, event, epoch_ms,
+                     all_spikes, all_conditions, all_events, event_map):
+    """
+    Paired or unpaired t-test comparing contra vs ipsi firing rates across trials.
+
+    :return: (t_stat, p_val)
+    """
+    lat_labels = all_conditions[area_label][neuron_idx][:, 0]
+    event_times = np.array(all_events[area_label][event_map[event]][neuron_idx])
+    spikes_list = all_spikes[area_label][neuron_idx]
+
+    contra = epoch_trial_rates(spikes_list, event_times, epoch_ms, lat_labels, 'c')
+    ipsi = epoch_trial_rates(spikes_list, event_times, epoch_ms, lat_labels, 'i')
+
+    if len(contra) == len(ipsi) and len(contra) > 1:
+        t, p = ttest_rel(contra, ipsi)
+    elif len(contra) > 1 and len(ipsi) > 1:
+        t, p = ttest_ind(contra, ipsi, equal_var=False)
+    else:
+        t, p = np.nan, np.nan
+    return t, p
+
+def center_sdf(sdf):
+    mean = sdf.mean(dim=1, keepdim=True)
+    centered = sdf - mean.repeat(1, sdf.shape[1])
+    square = centered @ centered.T
+    return {'square':square, 'centered':centered}
+
+def velocity(proj, dims=3, dt=5):
+    diffs = proj[1:, :dims]-proj[:-1, :dims]
+    spd = np.sqrt((diffs**2).sum(axis=-1))/dt
+    return spd

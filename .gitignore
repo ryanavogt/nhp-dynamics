@@ -1,3 +1,5 @@
-Data/Processed/*
-genInvalidateInterTrialSegments_Inact_ofbCode.m
-.idea
+
+/Data/Processed/Summary/
+/Claude outputs/
+/OLD/
+/Results/
