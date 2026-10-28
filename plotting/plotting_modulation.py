@@ -24,6 +24,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 from matplotlib.patches import Patch
+import seaborn as sns
 
 from config import (
     MODULATION_DIR,
@@ -157,7 +158,7 @@ for region in hand_use_mod.keys():
     #     x + step * multiplier / 2,
     #     [e.split(' ')[0] for e in list(epoch_window_map.keys())[1:]],
     # )
-    ax.set_ticks([])
+    ax.set_xticks([])
     if region != 'M1':
         ax.set_yticks([])
 

@@ -39,14 +39,12 @@ run() {
     $PYTHON "$ROOT/$1"
 }
 
-run plotting/plotting_population.py
 run plotting/plotting_modulation.py
 run plotting/plotting_selectivity.py
-run plotting/rasters_classes.py
-run plotting/pca_plot_neurons.py
 run plotting/pca_plot_trajectories.py
+run plotting/pca_plot_neurons.py
+run plotting/plot_rasters_classes.py
 run plotting/pca_plot_angles.py
-run plotting/pca_plot_coupled.py
 
 echo ""
 echo "=========================================="
